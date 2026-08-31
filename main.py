@@ -16,7 +16,7 @@ def main(page: ft.Page):
         page.update()
 
     # ----------------------------------------------------
-    # نافذة البيع السريع (Quick Sale Dialog)
+    # 1. نافذة البيع السريع (Quick Sale Dialog)
     # ----------------------------------------------------
     sale_prod = ft.Ref[str]()
     sale_color = ft.Ref[str]()
@@ -36,7 +36,7 @@ def main(page: ft.Page):
 
     def on_channel_change(e):
         shipping_field.visible = (channel_dropdown.value == "Trendyol")
-        if shipping_field.visible and (shipping_field.value == "0" or not shipping_field.value):
+        if shipping_field.visible and (not shipping_field.value or shipping_field.value == "0"):
             shipping_field.value = "30"
         page.update()
 
@@ -48,8 +48,10 @@ def main(page: ft.Page):
 
     def confirm_quick_sale(e):
         try:
-            p = float(str(price_field.value).replace(",", "."))
-            ship = float(str(shipping_field.value).replace(",", ".")) if shipping_field.visible else 0.0
+            val_str = str(price_field.value or "").replace(",", ".").strip()
+            p = float(val_str)
+            ship_str = str(shipping_field.value or "0").replace(",", ".").strip()
+            ship = float(ship_str) if shipping_field.visible else 0.0
         except Exception:
             show_snackbar("⚠️ يرجى إدخال سعر صحيح", color=ft.Colors.RED)
             return
@@ -87,10 +89,10 @@ def main(page: ft.Page):
     page.overlay.append(sale_dialog)
 
     def open_sale_modal(prod, color, size, cost):
-        sale_prod.current = prod
-        sale_color.current = color
-        sale_size.current = size
-        sale_cost.current = cost
+        sale_prod.current = str(prod)
+        sale_color.current = str(color)
+        sale_size.current = str(size)
+        sale_cost.current = float(cost)
         price_field.value = ""
         channel_dropdown.value = "Mağaza"
         shipping_field.visible = False
@@ -99,14 +101,14 @@ def main(page: ft.Page):
         page.update()
 
     # ----------------------------------------------------
-    # التبويب 1: المخزون المجمّع
+    # 2. التبويب الأول: المخزون المجمّع والمنسدل
     # ----------------------------------------------------
     search_query = ft.TextField(hint_text="بحث عن موديل أو لون...", expand=True, prefix_icon=ft.Icons.SEARCH)
     filter_low_stock = ft.Switch(label="أوشك على النفاد ⚠️", value=False)
     stock_container = ft.Column(spacing=10, scroll=ft.ScrollMode.AUTO, expand=True)
 
     def quick_add_one(prod, color, size, cost):
-        add_or_update_variant(prod=prod, color=color, size=size, qty=1, cost=cost)
+        add_or_update_variant(prod=str(prod), color=str(color), size=str(size), qty=1, cost=float(cost))
         show_snackbar(f"✅ تم إضافة +1 إلى {str(prod).title()} ({size})")
         refresh_all()
 
@@ -116,8 +118,8 @@ def main(page: ft.Page):
         
         grouped = {}
         for r in raw_stock:
-            p_name = r.get("product_name") or ""
-            c_name = r.get("color") or ""
+            p_name = str(r.get("product_name") or "")
+            c_name = str(r.get("color") or "")
             key = (p_name, c_name)
             if key not in grouped:
                 grouped[key] = []
@@ -127,7 +129,7 @@ def main(page: ft.Page):
         only_low = bool(filter_low_stock.value)
 
         for (prod, color), variants in grouped.items():
-            if q and (q not in str(prod).lower() and q not in str(color).lower()):
+            if q and (q not in prod.lower() and q not in color.lower()):
                 continue
 
             total_qty = sum(int(v.get("quantity") or 0) for v in variants)
@@ -137,20 +139,16 @@ def main(page: ft.Page):
             sizes_column = ft.Column(spacing=8, visible=False)
             arrow_icon = ft.Icon(ft.Icons.KEYBOARD_ARROW_DOWN)
 
-            def toggle_expand(e, col=sizes_column, icon=arrow_icon):
-                col.visible = not col.visible
-                icon.name = ft.Icons.KEYBOARD_ARROW_UP if col.visible else ft.Icons.KEYBOARD_ARROW_DOWN
-                page.update()
-
             for v in variants:
                 s_qty = int(v.get("quantity") or 0)
                 cost_val = float(v.get("cost_price") or 0.0)
+                s_name = str(v.get("size") or "-")
                 badge_col = ft.Colors.GREEN if s_qty > 3 else (ft.Colors.ORANGE if s_qty > 0 else ft.Colors.RED)
                 
                 sizes_column.controls.append(
                     ft.Container(
                         content=ft.Row([
-                            ft.Text(f"مقاس: {v.get('size', '-')}", weight=ft.FontWeight.BOLD, expand=True),
+                            ft.Text(f"مقاس: {s_name}", weight=ft.FontWeight.BOLD, expand=True),
                             ft.Text(f"التكلفة: {cost_val:.2f} TL", size=12, color=ft.Colors.GREY_700),
                             ft.Container(
                                 content=ft.Text(f"{s_qty} قطعة", color=ft.Colors.WHITE, size=11, weight=ft.FontWeight.BOLD),
@@ -162,13 +160,13 @@ def main(page: ft.Page):
                                 icon=ft.Icons.REMOVE_CIRCLE_OUTLINE,
                                 icon_color=ft.Colors.RED_600,
                                 tooltip="تسجيل بيع (-1)",
-                                on_click=lambda e, p=prod, c=color, s=v.get("size", "-"), cost=cost_val: open_sale_modal(p, c, s, cost)
+                                on_click=lambda e, p=prod, c=color, s=s_name, cost=cost_val: open_sale_modal(p, c, s, cost)
                             ),
                             ft.IconButton(
                                 icon=ft.Icons.ADD_CIRCLE_OUTLINE,
                                 icon_color=ft.Colors.GREEN_600,
                                 tooltip="إضافة قطعة (+1)",
-                                on_click=lambda e, p=prod, c=color, s=v.get("size", "-"), cost=cost_val: quick_add_one(p, c, s, cost)
+                                on_click=lambda e, p=prod, c=color, s=s_name, cost=cost_val: quick_add_one(p, c, s, cost)
                             )
                         ]),
                         bgcolor=ft.Colors.GREY_50,
@@ -177,24 +175,32 @@ def main(page: ft.Page):
                     )
                 )
 
+            def make_toggle(col, icon):
+                def toggle(e):
+                    col.visible = not col.visible
+                    icon.name = ft.Icons.KEYBOARD_ARROW_UP if col.visible else ft.Icons.KEYBOARD_ARROW_DOWN
+                    page.update()
+                return toggle
+
             stock_container.controls.append(
                 ft.Card(
                     content=ft.Container(
                         content=ft.Column([
-                            ft.InkWell(
-                                on_click=toggle_expand,
+                            ft.Container(
+                                on_click=make_toggle(sizes_column, arrow_icon),
                                 content=ft.Row([
                                     ft.Icon(ft.Icons.CHECKROOM, color=ft.Colors.BLUE_900),
                                     ft.Column([
-                                        ft.Text(f"{str(prod).title()} - {str(color).title()}", weight=ft.FontWeight.BOLD, size=15),
+                                        ft.Text(f"{prod.title()} - {color.title()}", weight=ft.FontWeight.BOLD, size=15),
                                         ft.Text(f"إجمالي المخزون: {total_qty} قطعة (اضغط للتفاصيل)", size=12, color=ft.Colors.BLUE_GREY),
                                     ], expand=True),
                                     arrow_icon
-                                ])
+                                ]),
+                                padding=4
                             ),
                             sizes_column
                         ]),
-                        padding=12
+                        padding=10
                     )
                 )
             )
@@ -210,7 +216,7 @@ def main(page: ft.Page):
     ], expand=True)
 
     # ----------------------------------------------------
-    # التبويب 2: المساعد الذكي
+    # 3. التبويب الثاني: المساعد الذكي ولوحة المبيعات
     # ----------------------------------------------------
     dashboard_card = ft.Container()
 
@@ -301,7 +307,7 @@ def main(page: ft.Page):
     ], scroll=ft.ScrollMode.AUTO, expand=True)
 
     # ----------------------------------------------------
-    # التبويب 3: الملصقات
+    # 4. التبويب الثالث: الأدوات والملصقات
     # ----------------------------------------------------
     tab_tools = ft.Column([
         ft.Card(
@@ -317,7 +323,7 @@ def main(page: ft.Page):
     ], expand=True)
 
     # ----------------------------------------------------
-    # شريط التنقل السفلي
+    # 5. شريط التنقل السفلي والتبديل بين الشاشات
     # ----------------------------------------------------
     current_tab = ft.Column([tab_stock], expand=True)
 
