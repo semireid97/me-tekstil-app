@@ -1,139 +1,108 @@
 import sqlite3
-import io
-import os
-import openpyxl
-from datetime import datetime as dt, timedelta
+from datetime import datetime
 
-DB_FILE = "inventory.db"
-TRENDYOL_COMMISSION_RATE = 0.167
-LOW_STOCK_THRESHOLD = 3
-
-def get_db():
-    conn = sqlite3.connect(DB_FILE)
-    conn.row_factory = sqlite3.Row
-    return conn
+DB_NAME = "tekstil_erp.db"
 
 def init_db():
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS variants (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            product_name TEXT NOT NULL,
-            color TEXT NOT NULL,
-            size TEXT NOT NULL,
-            quantity INTEGER NOT NULL,
-            cost_price REAL NOT NULL,
-            image_path TEXT DEFAULT NULL,
-            UNIQUE(product_name, color, size)
-        )
-    """)
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS sales (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            product_name TEXT NOT NULL,
-            color TEXT NOT NULL,
-            size TEXT NOT NULL,
-            quantity INTEGER NOT NULL,
-            cost_price REAL NOT NULL,
-            sale_price REAL NOT NULL,
-            channel TEXT NOT NULL,
-            deductions REAL DEFAULT 0.0,
-            sale_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    """)
-    conn.commit()
-    conn.close()
-
-def add_or_update_variant(prod, color, size, qty, cost, image_path=None):
-    conn = get_db()
-    cursor = conn.cursor()
-    prod = prod.strip().lower()
-    color = color.strip().lower()
-    size = str(size).strip().upper()
-    
-    cursor.execute("""
-        INSERT INTO variants (product_name, color, size, quantity, cost_price, image_path)
-        VALUES (?, ?, ?, ?, ?, ?)
-        ON CONFLICT(product_name, color, size) DO UPDATE SET
-        quantity = quantity + excluded.quantity,
-        cost_price = excluded.cost_price,
-        image_path = COALESCE(excluded.image_path, variants.image_path)
-    """, (prod, color, size, qty, cost, image_path))
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+    c.execute('''CREATE TABLE IF NOT EXISTS inventory (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    product_name TEXT NOT NULL,
+                    color TEXT NOT NULL,
+                    size TEXT NOT NULL,
+                    quantity INTEGER DEFAULT 0,
+                    cost_price REAL DEFAULT 0.0,
+                    UNIQUE(product_name, color, size)
+                )''')
+    c.execute('''CREATE TABLE IF NOT EXISTS sales (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    product_name TEXT NOT NULL,
+                    color TEXT NOT NULL,
+                    size TEXT NOT NULL,
+                    quantity INTEGER NOT NULL,
+                    sale_price REAL NOT NULL,
+                    cost_price REAL NOT NULL,
+                    channel TEXT NOT NULL,
+                    commission_fee REAL DEFAULT 0.0,
+                    shipping_cost REAL DEFAULT 0.0,
+                    net_profit REAL NOT NULL,
+                    sale_date TEXT NOT NULL
+                )''')
     conn.commit()
     conn.close()
 
 def get_all_stock():
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute("""
-        SELECT product_name, color, size, quantity, cost_price, image_path
-        FROM variants
-        ORDER BY product_name ASC, color ASC
-    """)
-    rows = [dict(r) for r in cursor.fetchall()]
+    conn = sqlite3.connect(DB_NAME)
+    conn.row_factory = sqlite3.Row
+    c = conn.cursor()
+    c.execute("SELECT * FROM inventory ORDER BY product_name, color, size")
+    rows = c.fetchall()
     conn.close()
-    return rows
+    return [dict(r) for r in rows]
 
-def record_sale(prod, color, size, qty, sale_price, channel="Mağaza", shipping_cost=0.0):
-    conn = get_db()
-    cursor = conn.cursor()
-    prod = prod.strip().lower()
-    color = color.strip().lower()
-    size = str(size).strip().upper()
-
-    cursor.execute("SELECT id, quantity, cost_price FROM variants WHERE product_name = ? AND color = ? AND size = ?", (prod, color, size))
-    row = cursor.fetchone()
-    if not row or row["quantity"] < qty:
-        conn.close()
-        return False, "المخزون غير كافٍ أو المنتج غير مسجل!"
-
-    v_id = row["id"]
-    curr_qty = row["quantity"]
-    cost = row["cost_price"]
-
-    gross_revenue = sale_price * qty
-    deductions = (gross_revenue * TRENDYOL_COMMISSION_RATE + shipping_cost) if channel == "Trendyol" else 0.0
-    net_profit = gross_revenue - deductions - (cost * qty)
-
-    cursor.execute("UPDATE variants SET quantity = ? WHERE id = ?", (curr_qty - qty, v_id))
-    cursor.execute("""
-        INSERT INTO sales (product_name, color, size, quantity, cost_price, sale_price, channel, deductions)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    """, (prod, color, size, qty, cost, sale_price, channel, deductions))
+def add_or_update_variant(prod, color, size, qty, cost):
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+    c.execute("SELECT quantity, cost_price FROM inventory WHERE product_name=? AND color=? AND size=?", 
+              (prod.strip().lower(), color.strip().lower(), str(size).strip().upper()))
+    row = c.fetchone()
+    if row:
+        new_qty = int(row[0]) + int(qty)
+        c.execute("UPDATE inventory SET quantity=?, cost_price=? WHERE product_name=? AND color=? AND size=?",
+                  (new_qty, float(cost), prod.strip().lower(), color.strip().lower(), str(size).strip().upper()))
+    else:
+        c.execute("INSERT INTO inventory (product_name, color, size, quantity, cost_price) VALUES (?, ?, ?, ?, ?)",
+                  (prod.strip().lower(), color.strip().lower(), str(size).strip().upper(), int(qty), float(cost)))
     conn.commit()
     conn.close()
-    return True, {
-        "product": prod, "color": color, "size": size,
-        "quantity": qty, "net_profit": net_profit, "remaining": curr_qty - qty
-    }
+
+def record_sale(prod, color, size, qty, sale_price, channel="Mağaza", shipping_cost=0.0):
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+    c.execute("SELECT quantity, cost_price FROM inventory WHERE product_name=? AND color=? AND size=?",
+              (prod.strip().lower(), color.strip().lower(), str(size).strip().upper()))
+    row = c.fetchone()
+    if not row or row[0] < int(qty):
+        conn.close()
+        return False, "الكمية المطلوبة غير متوفرة في المستودع!"
+    
+    current_qty, cost_price = row[0], float(row[1])
+    qty = int(qty)
+    sale_price = float(sale_price)
+    shipping_cost = float(shipping_cost)
+
+    comm = (sale_price * 0.167 * qty) if channel.lower() == "trendyol" else 0.0
+    ship = (shipping_cost * qty) if channel.lower() == "trendyol" else 0.0
+    total_rev = sale_price * qty
+    total_cost = cost_price * qty
+    net_profit = total_rev - total_cost - comm - ship
+
+    c.execute("UPDATE inventory SET quantity=? WHERE product_name=? AND color=? AND size=?",
+              (current_qty - qty, prod.strip().lower(), color.strip().lower(), str(size).strip().upper()))
+
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    c.execute('''INSERT INTO sales (product_name, color, size, quantity, sale_price, cost_price, channel, commission_fee, shipping_cost, net_profit, sale_date)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+              (prod.strip().lower(), color.strip().lower(), str(size).strip().upper(), qty, sale_price, cost_price, channel, comm, ship, net_profit, now_str))
+    
+    conn.commit()
+    conn.close()
+    return True, {"net_profit": net_profit, "total_revenue": total_rev}
 
 def get_financial_summary(days=1):
-    start_date = dt.now().strftime("%Y-%m-%d 00:00:00") if days == 1 else (dt.now() - timedelta(days=days)).strftime("%Y-%m-%d %H:%M:%S")
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute("""
-        SELECT 
-            COALESCE(SUM(quantity), 0) as total_qty,
-            COALESCE(SUM(cost_price * quantity), 0) as total_cost,
-            COALESCE(SUM(sale_price * quantity), 0) as total_revenue,
-            COALESCE(SUM(deductions), 0) as total_deductions
-        FROM sales
-        WHERE sale_date >= ?
-    """, (start_date,))
-    row = cursor.fetchone()
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+    c.execute("""SELECT 
+                    COALESCE(SUM(quantity), 0),
+                    COALESCE(SUM(sale_price * quantity), 0.0),
+                    COALESCE(SUM(net_profit), 0.0)
+                 FROM sales 
+                 WHERE date(sale_date) >= date('now', '-' || cast(? as integer) || ' days')""", (int(days),))
+    row = c.fetchone()
     conn.close()
-
-    total_qty = row["total_qty"]
-    total_cost = row["total_cost"]
-    total_rev = row["total_revenue"]
-    total_ded = row["total_deductions"]
-    net_profit = total_rev - total_ded - total_cost
-
     return {
-        "total_sold": total_qty,
-        "total_revenue": total_rev,
-        "total_cost": total_cost,
-        "total_deductions": total_ded,
-        "net_profit": net_profit
+        "total_sold": int(row[0]) if row and row[0] is not None else 0,
+        "total_revenue": float(row[1]) if row and row[1] is not None else 0.0,
+        "net_profit": float(row[2]) if row and row[2] is not None else 0.0
     }

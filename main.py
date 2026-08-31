@@ -16,7 +16,7 @@ def main(page: ft.Page):
         page.update()
 
     # ----------------------------------------------------
-    # نافذة منبثقة للبيع السريع (Quick Sale Dialog)
+    # نافذة البيع السريع (Quick Sale Dialog)
     # ----------------------------------------------------
     sale_prod = ft.Ref[str]()
     sale_color = ft.Ref[str]()
@@ -36,7 +36,7 @@ def main(page: ft.Page):
 
     def on_channel_change(e):
         shipping_field.visible = (channel_dropdown.value == "Trendyol")
-        if shipping_field.visible and shipping_field.value == "0":
+        if shipping_field.visible and (shipping_field.value == "0" or not shipping_field.value):
             shipping_field.value = "30"
         page.update()
 
@@ -99,7 +99,7 @@ def main(page: ft.Page):
         page.update()
 
     # ----------------------------------------------------
-    # التبويب 1: إدارة وتصفح المخزون المجمّع
+    # التبويب 1: المخزون
     # ----------------------------------------------------
     search_query = ft.TextField(hint_text="بحث عن موديل أو لون...", expand=True, prefix_icon=ft.Icons.SEARCH)
     filter_low_stock = ft.Switch(label="أوشك على النفاد ⚠️", value=False)
@@ -122,14 +122,14 @@ def main(page: ft.Page):
             grouped[key].append(r)
 
         q = search_query.value.strip().lower() if search_query.value else ""
-        only_low = filter_low_stock.value
+        only_low = bool(filter_low_stock.value)
 
         for (prod, color), variants in grouped.items():
             if q and (q not in prod.lower() and q not in color.lower()):
                 continue
 
-            total_qty = sum(v["quantity"] for v in variants)
-            if only_low and not any(v["quantity"] <= 3 for v in variants):
+            total_qty = sum(int(v["quantity"]) for v in variants)
+            if only_low and not any(int(v["quantity"]) <= 3 for v in variants):
                 continue
 
             sizes_column = ft.Column(spacing=8, visible=False)
@@ -141,7 +141,7 @@ def main(page: ft.Page):
                 page.update()
 
             for v in variants:
-                s_qty = v["quantity"]
+                s_qty = int(v["quantity"])
                 badge_col = ft.Colors.GREEN if s_qty > 3 else (ft.Colors.ORANGE if s_qty > 0 else ft.Colors.RED)
                 
                 sizes_column.controls.append(
@@ -207,21 +207,25 @@ def main(page: ft.Page):
     ], expand=True)
 
     # ----------------------------------------------------
-    # التبويب 2: المساعد الذكي ولوحة المبيعات
+    # التبويب 2: المساعد الذكي
     # ----------------------------------------------------
     dashboard_card = ft.Container()
 
     def update_dashboard():
         stats = get_financial_summary(days=1)
+        sold_count = stats.get("total_sold", 0)
+        rev = stats.get("total_revenue", 0.0)
+        prof = stats.get("net_profit", 0.0)
+
         dashboard_card.content = ft.Card(
             content=ft.Container(
                 content=ft.Column([
                     ft.Text("📊 تقرير مبيعات اليوم (Günlük Rapor)", size=16, weight=ft.FontWeight.BOLD),
                     ft.Divider(),
                     ft.Row([
-                        ft.Column([ft.Text("المباع"), ft.Text(f"{stats['total_sold']} قطعة", weight=ft.FontWeight.BOLD, size=15)]),
-                        ft.Column([ft.Text("الإيراد"), ft.Text(f"{stats['total_revenue']:.2f} TL", weight=ft.FontWeight.BOLD, size=15, color=ft.Colors.BLUE)]),
-                        ft.Column([ft.Text("الربح"), ft.Text(f"+{stats['net_profit']:.2f} TL", weight=ft.FontWeight.BOLD, size=15, color=ft.Colors.GREEN)]),
+                        ft.Column([ft.Text("المباع"), ft.Text(f"{sold_count} قطعة", weight=ft.FontWeight.BOLD, size=15)]),
+                        ft.Column([ft.Text("الإيراد"), ft.Text(f"{rev:.2f} TL", weight=ft.FontWeight.BOLD, size=15, color=ft.Colors.BLUE)]),
+                        ft.Column([ft.Text("الربح"), ft.Text(f"+{prof:.2f} TL", weight=ft.FontWeight.BOLD, size=15, color=ft.Colors.GREEN)]),
                     ], alignment=ft.MainAxisAlignment.SPACE_AROUND)
                 ]),
                 padding=14
@@ -294,7 +298,7 @@ def main(page: ft.Page):
     ], scroll=ft.ScrollMode.AUTO, expand=True)
 
     # ----------------------------------------------------
-    # التبويب 3: الملصقات وتصدير الإكسل
+    # التبويب 3: الملصقات
     # ----------------------------------------------------
     tab_tools = ft.Column([
         ft.Card(
@@ -310,12 +314,12 @@ def main(page: ft.Page):
     ], expand=True)
 
     # ----------------------------------------------------
-    # إدارة التنقل عبر BottomNavigationBar
+    # شريط التنقل
     # ----------------------------------------------------
     current_tab = ft.Column([tab_stock], expand=True)
 
     def on_nav_change(e):
-        idx = e.control.selected_index
+        idx = int(e.control.selected_index)
         current_tab.controls.clear()
         if idx == 0:
             current_tab.controls.append(tab_stock)
