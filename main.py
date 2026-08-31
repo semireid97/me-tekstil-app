@@ -147,7 +147,7 @@ def main(page: ft.Page):
                             ft.Container(
                                 content=ft.Text(f"{s_qty} قطعة", color=ft.Colors.WHITE, size=11, weight=ft.FontWeight.BOLD),
                                 bgcolor=badge_col,
-                                padding=ft.padding.symmetric(horizontal=8, vertical=3),
+                                padding=6,
                                 border_radius=6
                             ),
                             ft.IconButton(
