@@ -2,7 +2,7 @@ import sqlite3
 import datetime
 import flet as ft
 
-# --- إعداد قاعدة البيانات ---
+# --- تهيئة قاعدة البيانات ---
 def init_db():
     conn = sqlite3.connect("inventory.db")
     cursor = conn.cursor()
@@ -37,27 +37,26 @@ def init_db():
 def main(page: ft.Page):
     init_db()
     page.title = "M&E Tekstil ERP"
-    page.theme_mode = ft.ThemeMode.LIGHT
     page.padding = 12
     page.scroll = ft.ScrollMode.AUTO
     page.bgcolor = "#F8FAFC"
 
-    # عناصر واجهة المستخدم
-    stat_total_stock = ft.Text("0", size=20, weight=ft.FontWeight.BOLD, color=ft.colors.BLUE_900)
-    stat_today_sales = ft.Text("0", size=20, weight=ft.FontWeight.BOLD, color=ft.colors.INDIGO_900)
-    stat_today_profit = ft.Text("0.00 TL", size=20, weight=ft.FontWeight.BOLD, color=ft.colors.GREEN_900)
+    # عناصر لوحة المؤشرات
+    stat_total_stock = ft.Text("0", size=18, weight=ft.FontWeight.BOLD, color="#1E3A8A")
+    stat_today_sales = ft.Text("0", size=18, weight=ft.FontWeight.BOLD, color="#312E81")
+    stat_today_profit = ft.Text("0.00 TL", size=18, weight=ft.FontWeight.BOLD, color="#14532D")
 
     stock_list_view = ft.Column(spacing=8)
+    all_stock_data = []
+
     search_input = ft.TextField(
         hint_text="ابحث عن موديل، لون، مقاس...",
-        prefix_icon=ft.icons.SEARCH,
+        prefix_icon=ft.Icons.SEARCH,
         border_radius=12,
-        bgcolor=ft.colors.WHITE,
+        bgcolor="#FFFFFF",
         dense=True,
         on_change=lambda e: filter_stock(e.control.value)
     )
-
-    all_stock_data = []
 
     # --- تحديث المؤشرات العلوية ---
     def update_metrics():
@@ -82,7 +81,7 @@ def main(page: ft.Page):
 
         conn.close()
 
-    # --- تحديث قائمة المخزون ---
+    # --- تحميل وعرض المخزون ---
     def load_stock():
         nonlocal all_stock_data
         conn = sqlite3.connect("inventory.db")
@@ -101,8 +100,8 @@ def main(page: ft.Page):
                     content=ft.Column(
                         horizontal_alignment=ft.CrossAxisAlignment.CENTER,
                         controls=[
-                            ft.Icon(ft.icons.INVENTORY_2_OUTLINED, size=48, color=ft.colors.GREY_400),
-                            ft.Text("لا توجد منتجات مطابقة في المخزن", color=ft.colors.GREY_600, size=15)
+                            ft.Icon(ft.Icons.INVENTORY_2_OUTLINED, size=48, color="#94A3B8"),
+                            ft.Text("لا توجد منتجات مسجلة في المخزن", color="#64748B", size=15)
                         ]
                     ),
                     alignment=ft.alignment.center,
@@ -112,13 +111,13 @@ def main(page: ft.Page):
         else:
             for item in items:
                 v_id, name, color, size, qty, cost = item
-                status_color = ft.colors.GREEN_600 if qty > 3 else (ft.colors.ORANGE_600 if qty > 0 else ft.colors.RED_600)
+                status_color = "#16A34A" if qty > 3 else ("#EA580C" if qty > 0 else "#DC2626")
                 status_text = "متوفر" if qty > 3 else ("قليل" if qty > 0 else "نفد")
 
                 card = ft.Container(
                     padding=14,
                     border_radius=14,
-                    bgcolor=ft.colors.WHITE,
+                    bgcolor="#FFFFFF",
                     border=ft.border.all(1, "#E2E8F0"),
                     content=ft.Row(
                         alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
@@ -130,10 +129,10 @@ def main(page: ft.Page):
                                     ft.Row(
                                         spacing=6,
                                         controls=[
-                                            ft.Text(f"{name.title()} ({color.title()})", size=16, weight=ft.FontWeight.BOLD, color="#1E293B"),
+                                            ft.Text(f"{name.title()} ({color.title()})", size=16, weight=ft.FontWeight.BOLD, color="#0F172A"),
                                             ft.Container(
-                                                content=ft.Text(size, size=12, weight=ft.FontWeight.BOLD, color=ft.colors.BLUE_800),
-                                                bgcolor=ft.colors.BLUE_50,
+                                                content=ft.Text(size, size=12, weight=ft.FontWeight.BOLD, color="#1D4ED8"),
+                                                bgcolor="#EFF6FF",
                                                 padding=ft.padding.symmetric(horizontal=8, vertical=2),
                                                 border_radius=6
                                             )
@@ -143,7 +142,7 @@ def main(page: ft.Page):
                                     ft.Row(
                                         spacing=4,
                                         controls=[
-                                            ft.Icon(ft.icons.CIRCLE, size=9, color=status_color),
+                                            ft.Icon(ft.Icons.CIRCLE, size=8, color=status_color),
                                             ft.Text(f"{qty} قطعة ({status_text})", size=13, weight=ft.FontWeight.W_500, color=status_color)
                                         ]
                                     )
@@ -151,9 +150,9 @@ def main(page: ft.Page):
                             ),
                             ft.ElevatedButton(
                                 "بيع",
-                                icon=ft.icons.SHOPPING_BAG_OUTLINED,
-                                bgcolor=ft.colors.GREEN_600,
-                                color=ft.colors.WHITE,
+                                icon=ft.Icons.SHOPPING_BAG_OUTLINED,
+                                bgcolor="#16A34A",
+                                color="#FFFFFF",
                                 style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=10)),
                                 on_click=lambda e, vid=v_id, n=name, c=color, s=size, q=qty, cp=cost: open_sale_dialog(vid, n, c, s, q, cp)
                             )
@@ -176,7 +175,7 @@ def main(page: ft.Page):
 
     # --- نافذة تسجيل البيع ---
     def open_sale_dialog(variant_id, name, color, size, max_qty, cost_price):
-        qty_input = ft.TextField(label="الكمية", value="1", keyboard_type=ft.KeyboardType.NUMBER, border_radius=8)
+        qty_input = ft.TextField(label="الكمية المباعة", value="1", keyboard_type=ft.KeyboardType.NUMBER, border_radius=8)
         price_input = ft.TextField(label="سعر البيع للقطعة (TL)", value="250", keyboard_type=ft.KeyboardType.NUMBER, border_radius=8)
         channel_dropdown = ft.Dropdown(
             label="منصة البيع",
@@ -195,13 +194,13 @@ def main(page: ft.Page):
                 sale_price = float(price_input.value)
                 channel = channel_dropdown.value
             except ValueError:
-                page.snack_bar = ft.SnackBar(ft.Text("⚠️ يرجى إدخال أرقام صحيحة!"), bgcolor=ft.colors.RED_700)
+                page.snack_bar = ft.SnackBar(ft.Text("⚠️ يرجى إدخال أرقام صحيحة!"), bgcolor="#DC2626")
                 page.snack_bar.open = True
                 page.update()
                 return
 
             if sale_qty <= 0 or sale_qty > max_qty:
-                page.snack_bar = ft.SnackBar(ft.Text(f"⚠️ الكمية غير متاحة! المتوفر في المخزن: {max_qty}"), bgcolor=ft.colors.RED_700)
+                page.snack_bar = ft.SnackBar(ft.Text(f"⚠️ الكمية غير صالحة! المتوفر: {max_qty}"), bgcolor="#DC2626")
                 page.snack_bar.open = True
                 page.update()
                 return
@@ -219,7 +218,7 @@ def main(page: ft.Page):
             conn.close()
 
             dialog.open = False
-            page.snack_bar = ft.SnackBar(ft.Text(f"✅ تم تسجيل بيع {sale_qty} قطعة بنجاح!"), bgcolor=ft.colors.GREEN_700)
+            page.snack_bar = ft.SnackBar(ft.Text(f"✅ تم تسجيل بيع {sale_qty} قطعة بنجاح!"), bgcolor="#16A34A")
             page.snack_bar.open = True
             load_stock()
 
@@ -241,7 +240,7 @@ def main(page: ft.Page):
             ),
             actions=[
                 ft.TextButton("إلغاء", on_click=close_dialog),
-                ft.ElevatedButton("تأكيد وخصم", on_click=confirm_sale, bgcolor=ft.colors.GREEN_600, color=ft.colors.WHITE)
+                ft.ElevatedButton("تأكيد وخصم", on_click=confirm_sale, bgcolor="#16A34A", color="#FFFFFF")
             ]
         )
 
@@ -255,7 +254,7 @@ def main(page: ft.Page):
         color_input = ft.TextField(label="اللون (Örn: Siyah / Sarı / Pudra)", border_radius=8)
         size_input = ft.TextField(label="المقاسات (Örn: S,M,L,XL أو 34,36,38)", border_radius=8)
         qty_input = ft.TextField(label="الكمية لكل مقاس", value="10", keyboard_type=ft.KeyboardType.NUMBER, border_radius=8)
-        cost_input = ft.TextField(label="سعر التكلفة (TL)", value="95", keyboard_type=ft.KeyboardType.NUMBER, border_radius=8)
+        cost_input = ft.TextField(label="سعر التكلفة للقطعة (TL)", value="95", keyboard_type=ft.KeyboardType.NUMBER, border_radius=8)
 
         def save_new_stock(ev):
             p_name = name_input.value.strip().lower()
@@ -264,7 +263,7 @@ def main(page: ft.Page):
             sizes = [s.strip().upper() for s in raw_sizes if s.strip()]
 
             if not p_name or not p_color or not sizes:
-                page.snack_bar = ft.SnackBar(ft.Text("⚠️ يرجى تعبئة كافة الحقول!"), bgcolor=ft.colors.RED_700)
+                page.snack_bar = ft.SnackBar(ft.Text("⚠️ يرجى ملء كافة الحقول!"), bgcolor="#DC2626")
                 page.snack_bar.open = True
                 page.update()
                 return
@@ -273,7 +272,7 @@ def main(page: ft.Page):
                 qty = int(qty_input.value)
                 cost = float(cost_input.value)
             except ValueError:
-                page.snack_bar = ft.SnackBar(ft.Text("⚠️ يرجى إدخال أرقام صحيحة للكمية والتكلفة!"), bgcolor=ft.colors.RED_700)
+                page.snack_bar = ft.SnackBar(ft.Text("⚠️ يرجى إدخال أرقام صحيحة!"), bgcolor="#DC2626")
                 page.snack_bar.open = True
                 page.update()
                 return
@@ -292,7 +291,7 @@ def main(page: ft.Page):
             conn.close()
 
             add_dialog.open = False
-            page.snack_bar = ft.SnackBar(ft.Text("✅ تم حفظ البضاعة بنجاح!"), bgcolor=ft.colors.GREEN_700)
+            page.snack_bar = ft.SnackBar(ft.Text("✅ تم حفظ البضاعة بنجاح!"), bgcolor="#16A34A")
             page.snack_bar.open = True
             load_stock()
 
@@ -315,7 +314,7 @@ def main(page: ft.Page):
             ),
             actions=[
                 ft.TextButton("إلغاء", on_click=close_add),
-                ft.ElevatedButton("حفظ في المخزن", on_click=save_new_stock, bgcolor=ft.colors.BLUE_700, color=ft.colors.WHITE)
+                ft.ElevatedButton("حفظ في المخزن", on_click=save_new_stock, bgcolor="#1D4ED8", color="#FFFFFF")
             ]
         )
 
@@ -325,15 +324,15 @@ def main(page: ft.Page):
 
     # --- شريط التطبيق العلوي ---
     page.appbar = ft.AppBar(
-        title=ft.Text("M&E Tekstil ERP", weight=ft.FontWeight.BOLD, color=ft.colors.WHITE),
+        title=ft.Text("M&E Tekstil ERP", weight=ft.FontWeight.BOLD, color="#FFFFFF"),
         center_title=True,
-        bgcolor="#1E293B",
+        bgcolor="#0F172A",
         actions=[
-            ft.IconButton(ft.icons.REFRESH, tooltip="تحديث", icon_color=ft.colors.WHITE, on_click=lambda e: load_stock())
+            ft.IconButton(ft.Icons.REFRESH, tooltip="تحديث", icon_color="#FFFFFF", on_click=lambda e: load_stock())
         ]
     )
 
-    # بطاقات لوحة التحكم العلوية (Dashboard KPI Cards)
+    # تصميم بطاقات لوحة المؤشرات
     def kpi_card(title, value_widget, icon, bg_color):
         return ft.Container(
             expand=True,
@@ -346,8 +345,8 @@ def main(page: ft.Page):
                     ft.Row(
                         alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
                         controls=[
-                            ft.Text(title, size=12, color="#475569", weight=ft.FontWeight.W_500),
-                            ft.Icon(icon, size=18, color="#475569")
+                            ft.Text(title, size=11, color="#475569", weight=ft.FontWeight.W_500),
+                            ft.Icon(icon, size=16, color="#475569")
                         ]
                     ),
                     value_widget
@@ -358,30 +357,30 @@ def main(page: ft.Page):
     dashboard_row = ft.Row(
         spacing=8,
         controls=[
-            kpi_card("إجمالي المخزن", stat_total_stock, ft.icons.INVENTORY, "#EFF6FF"),
-            kpi_card("مبيعات اليوم", stat_today_sales, ft.icons.SHOPPING_CART, "#EEF2FF"),
-            kpi_card("أرباح اليوم", stat_today_profit, ft.icons.ATTACH_MONEY, "#F0FDF4"),
+            kpi_card("إجمالي المخزن", stat_total_stock, ft.Icons.INVENTORY_2, "#EFF6FF"),
+            kpi_card("مبيعات اليوم", stat_today_sales, ft.Icons.SHOPPING_BAG, "#EEF2FF"),
+            kpi_card("أرباح اليوم", stat_today_profit, ft.Icons.ATTACH_MONEY, "#F0FDF4"),
         ]
     )
 
     # الزر العائم لإضافة البضائع
     page.floating_action_button = ft.FloatingActionButton(
-        icon=ft.icons.ADD,
-        bgcolor=ft.colors.BLUE_700,
-        content=ft.Icon(ft.icons.ADD, color=ft.colors.WHITE),
+        icon=ft.Icons.ADD,
+        bgcolor="#1D4ED8",
+        content=ft.Icon(ft.Icons.ADD, color="#FFFFFF"),
         on_click=open_add_dialog,
         tooltip="إضافة بضاعة جديدة"
     )
 
     page.add(
         dashboard_row,
-        ft.Container(height=6),
+        ft.Container(height=4),
         search_input,
-        ft.Container(height=6),
+        ft.Container(height=4),
         ft.Row(
             alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
             controls=[
-                ft.Text("📦 قائمة المخزون", size=16, weight=ft.FontWeight.BOLD, color="#1E293B"),
+                ft.Text("📦 قائمة المخزون", size=16, weight=ft.FontWeight.BOLD, color="#0F172A"),
                 ft.TextButton("➕ إضافة سريعة", on_click=open_add_dialog)
             ]
         ),
@@ -391,4 +390,3 @@ def main(page: ft.Page):
     load_stock()
 
 ft.app(target=main)
-                
