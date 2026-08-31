@@ -132,7 +132,14 @@ def main(page: ft.Page):
             if only_low and not any(v["quantity"] <= 3 for v in variants):
                 continue
 
-            sizes_column = ft.Column(spacing=8)
+            sizes_column = ft.Column(spacing=8, visible=False)
+            arrow_icon = ft.Icon(ft.Icons.KEYBOARD_ARROW_DOWN)
+
+            def toggle_expand(e, col=sizes_column, icon=arrow_icon):
+                col.visible = not col.visible
+                icon.name = ft.Icons.KEYBOARD_ARROW_UP if col.visible else ft.Icons.KEYBOARD_ARROW_DOWN
+                page.update()
+
             for v in variants:
                 s_qty = v["quantity"]
                 badge_col = ft.Colors.GREEN if s_qty > 3 else (ft.Colors.ORANGE if s_qty > 0 else ft.Colors.RED)
@@ -162,18 +169,29 @@ def main(page: ft.Page):
                             )
                         ]),
                         bgcolor=ft.Colors.GREY_50,
-                        padding=6,
+                        padding=8,
                         border_radius=8
                     )
                 )
 
             stock_container.controls.append(
                 ft.Card(
-                    content=ft.ExpansionTile(
-                        leading=ft.Icon(ft.Icons.CHECKROOM, color=ft.Colors.BLUE_900),
-                        title=ft.Text(f"{prod.title()} - {color.title()}", weight=ft.FontWeight.BOLD),
-                        subtitle=ft.Text(f"إجمالي المخزون: {total_qty} قطعة", size=12, color=ft.Colors.BLUE_GREY),
-                        controls=[ft.Container(content=sizes_column, padding=10)]
+                    content=ft.Container(
+                        content=ft.Column([
+                            ft.InkWell(
+                                on_click=toggle_expand,
+                                content=ft.Row([
+                                    ft.Icon(ft.Icons.CHECKROOM, color=ft.Colors.BLUE_900),
+                                    ft.Column([
+                                        ft.Text(f"{prod.title()} - {color.title()}", weight=ft.FontWeight.BOLD, size=15),
+                                        ft.Text(f"إجمالي المخزون: {total_qty} قطعة (اضغط للتفاصيل)", size=12, color=ft.Colors.BLUE_GREY),
+                                    ], expand=True),
+                                    arrow_icon
+                                ])
+                            ),
+                            sizes_column
+                        ]),
+                        padding=12
                     )
                 )
             )
