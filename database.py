@@ -1,7 +1,7 @@
 import sqlite3
 import io
 import os
-import pandas as pd
+import openpyxl
 from datetime import datetime as dt, timedelta
 
 DB_FILE = "inventory.db"
@@ -137,16 +137,3 @@ def get_financial_summary(days=1):
         "total_deductions": total_ded,
         "net_profit": net_profit
     }
-
-def export_excel_bytes():
-    conn = get_db()
-    df_stock = pd.read_sql_query("SELECT product_name AS [المنتج], color AS [اللون], size AS [المقاس], quantity AS [المخزون], cost_price AS [التكلفة] FROM variants", conn)
-    df_sales = pd.read_sql_query("SELECT sale_date AS [التاريخ], channel AS [القناة], product_name AS [المنتج], color AS [اللون], size AS [المقاس], quantity AS [العدد], sale_price AS [سعر البيع], deductions AS [الخصم] FROM sales ORDER BY id DESC", conn)
-    conn.close()
-
-    output = io.BytesIO()
-    with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        df_stock.to_excel(writer, sheet_name='المخزون', index=False)
-        df_sales.to_excel(writer, sheet_name='المبيعات', index=False)
-    output.seek(0)
-    return output.getvalue()

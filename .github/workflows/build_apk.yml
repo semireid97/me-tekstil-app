@@ -37,14 +37,10 @@ jobs:
 
       - name: Build APK
         run: |
-          flet build apk --project-name me_tekstil_erp --org com.metekstil.erp --no-rich-output
+          flet build apk --project-name "me_tekstil_erp" --org "com.metekstil.erp" --no-rich-output
 
-      - name: Locate and Upload APK
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: ME_Tekstil_ERP_APK
-          path: |
-            build/apk/*.apk
-            dist/*.apk
-            *.apk
-          if-no-files-found: error
+          path: build/apk/*.apk
