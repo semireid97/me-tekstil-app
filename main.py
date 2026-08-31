@@ -10,14 +10,13 @@ def main(page: ft.Page):
     
     init_db()
 
-    # --- عناصر التنبيهات السريعة ---
     def show_snackbar(text, color=ft.Colors.GREEN):
         snack = ft.SnackBar(ft.Text(text, color=ft.Colors.WHITE), bgcolor=color)
         page.overlay.append(snack)
         snack.open = True
         page.update()
 
-    # --- 1. قسم الإحصائيات العلوية ---
+    # 1. لوحة الإحصائيات
     def build_dashboard():
         stats = get_financial_summary(days=1)
         return ft.Card(
@@ -35,7 +34,7 @@ def main(page: ft.Page):
             )
         )
 
-    # --- 2. قسم المساعد الذكي ---
+    # 2. المساعد الذكي
     ai_input = ft.TextField(
         hint_text="اكتب بالعامية (مثال: سجل بيع 1 بنطلون اسود 34 ترينديول بـ 450)",
         expand=True,
@@ -94,7 +93,7 @@ def main(page: ft.Page):
         padding=10
     )
 
-    # --- 3. قسم عرض المخزون ---
+    # 3. قائمة المخزون
     stock_list_view = ft.ListView(expand=1, spacing=10, height=350)
 
     def refresh_stock_list():
@@ -109,23 +108,23 @@ def main(page: ft.Page):
             status_color = ft.Colors.GREEN if qty > 3 else (ft.Colors.ORANGE if qty > 0 else ft.Colors.RED)
             
             stock_list_view.controls.append(
-                ft.Container(
-                    content=ft.Row([
-                        ft.Icon(ft.Icons.CHECKROOM, color=ft.Colors.BLUE_GREY),
-                        ft.Column([
-                            ft.Text(f"{item['product_name'].title()} - {item['color'].title()}", weight=ft.FontWeight.BOLD),
-                            ft.Text(f"المقاس: {item['size']} | التكلفة: {item['cost_price']} TL", size=12, color=ft.Colors.GREY_700),
-                        ], expand=True),
-                        ft.Container(
-                            content=ft.Text(f"{qty} قطعة", color=ft.Colors.WHITE, size=12, weight=ft.FontWeight.BOLD),
-                            bgcolor=status_color,
-                            padding=8,
-                            border_radius=8
-                        )
-                    ]),
-                    padding=10,
-                    border=ft.border.all(1, ft.Colors.GREY_300),
-                    border_radius=10
+                ft.Card(
+                    content=ft.Container(
+                        content=ft.Row([
+                            ft.Icon(ft.Icons.CHECKROOM, color=ft.Colors.BLUE_GREY),
+                            ft.Column([
+                                ft.Text(f"{item['product_name'].title()} - {item['color'].title()}", weight=ft.FontWeight.BOLD),
+                                ft.Text(f"المقاس: {item['size']} | التكلفة: {item['cost_price']} TL", size=12, color=ft.Colors.GREY_700),
+                            ], expand=True),
+                            ft.Container(
+                                content=ft.Text(f"{qty} قطعة", color=ft.Colors.WHITE, size=12, weight=ft.FontWeight.BOLD),
+                                bgcolor=status_color,
+                                padding=8,
+                                border_radius=8
+                            )
+                        ]),
+                        padding=12
+                    )
                 )
             )
 
