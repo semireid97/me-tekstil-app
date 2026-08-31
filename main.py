@@ -23,7 +23,7 @@ def main(page: ft.Page):
     sale_size = ft.Ref[str]()
     sale_cost = ft.Ref[float]()
 
-    price_field = ft.TextField(label="سعر البيع (Satış Fiyatı)", keyboard_type=ft.KeyboardType.NUMBER, prefix_text="TL ")
+    price_field = ft.TextField(label="سعر البيع (TL)", keyboard_type=ft.KeyboardType.NUMBER)
     channel_dropdown = ft.Dropdown(
         label="قناة البيع (Kanal)",
         options=[
@@ -32,7 +32,7 @@ def main(page: ft.Page):
         ],
         value="Mağaza"
     )
-    shipping_field = ft.TextField(label="تكلفة الشحن (Trendyol Kargo)", value="0", keyboard_type=ft.KeyboardType.NUMBER, visible=False)
+    shipping_field = ft.TextField(label="تكلفة الشحن (Trendyol Kargo TL)", value="0", keyboard_type=ft.KeyboardType.NUMBER, visible=False)
 
     def on_channel_change(e):
         shipping_field.visible = (channel_dropdown.value == "Trendyol")
@@ -74,7 +74,6 @@ def main(page: ft.Page):
     sale_dialog = ft.AlertDialog(
         title=ft.Text("تسجيل عملية بيع"),
         content=ft.Column([
-            ft.Text(id="sale_info_text", value=""),
             price_field,
             channel_dropdown,
             shipping_field
@@ -115,7 +114,6 @@ def main(page: ft.Page):
         stock_container.controls.clear()
         raw_stock = get_all_stock()
         
-        # تجميع المنتجات حسب (الاسم واللون)
         grouped = {}
         for r in raw_stock:
             key = (r["product_name"], r["color"])
@@ -123,7 +121,7 @@ def main(page: ft.Page):
                 grouped[key] = []
             grouped[key].append(r)
 
-        q = search_query.value.strip().lower()
+        q = search_query.value.strip().lower() if search_query.value else ""
         only_low = filter_low_stock.value
 
         for (prod, color), variants in grouped.items():
