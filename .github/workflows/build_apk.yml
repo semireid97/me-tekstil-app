@@ -29,18 +29,19 @@ jobs:
         with:
           channel: 'stable'
 
-      - name: Install Python Dependencies
+      - name: Install Dependencies
         run: |
-          pip install --upgrade pip
-          pip install flet
+          python -m pip install --upgrade pip
+          pip install "flet[all]"
           pip install -r requirements.txt
 
-      - name: Build APK with Flet
+      - name: Build APK
         run: |
-          flet build apk --project "M&E Tekstil ERP" --org "com.metekstil.erp"
+          flet build apk --project-name "me_tekstil_erp" --org "com.metekstil.erp" -vv
 
-      - name: Upload APK Artifact
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: ME_Tekstil_ERP_Release
+          name: ME_Tekstil_ERP_APK
           path: build/apk/*.apk
+          if-no-files-found: warn
