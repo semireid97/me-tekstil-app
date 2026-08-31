@@ -119,7 +119,7 @@ def main(page: ft.Page):
                         ft.Container(
                             content=ft.Text(f"{qty} قطعة", color=ft.Colors.WHITE, size=12, weight=ft.FontWeight.BOLD),
                             bgcolor=status_color,
-                            padding=ft.padding.symmetric(horizontal=10, vertical=4),
+                            padding=8,
                             border_radius=8
                         )
                     ]),
