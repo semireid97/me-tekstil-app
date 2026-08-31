@@ -313,9 +313,9 @@ def main(page: ft.Page):
         selected_index=0,
         on_change=on_nav_change,
         destinations=[
-            ft.NavigationDestination(icon=ft.Icons.INVENTORY_2_OUTLINED, selected_icon=ft.Icons.INVENTORY_2, label="المخزون"),
-            ft.NavigationDestination(icon=ft.Icons.AUTO_AWESOME_OUTLINED, selected_icon=ft.Icons.AUTO_AWESOME, label="المساعد & البيع"),
-            ft.NavigationDestination(icon=ft.Icons.PRINT_OUTLINED, selected_icon=ft.Icons.PRINT, label="الملصقات"),
+            ft.NavigationBarDestination(icon=ft.Icons.INVENTORY_2_OUTLINED, selected_icon=ft.Icons.INVENTORY_2, label="المخزون"),
+            ft.NavigationBarDestination(icon=ft.Icons.AUTO_AWESOME_OUTLINED, selected_icon=ft.Icons.AUTO_AWESOME, label="المساعد & البيع"),
+            ft.NavigationBarDestination(icon=ft.Icons.PRINT_OUTLINED, selected_icon=ft.Icons.PRINT, label="الملصقات"),
         ]
     )
 
