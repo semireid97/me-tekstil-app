@@ -27,21 +27,21 @@ jobs:
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
+          flutter-version: '3.24.x'
           channel: 'stable'
 
-      - name: Install Dependencies
+      - name: Install Flet & Dependencies
         run: |
           python -m pip install --upgrade pip
           pip install "flet[all]"
           pip install -r requirements.txt
 
-      - name: Build APK
+      - name: Build APK via Flet
         run: |
-          flet build apk --project-name "me_tekstil_erp" --org "com.metekstil.erp" -vv
+          flet build apk --org com.metekstil.erp --project "ME Tekstil ERP"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: ME_Tekstil_ERP_APK
           path: build/apk/*.apk
-          if-no-files-found: warn
