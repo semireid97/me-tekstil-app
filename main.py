@@ -48,8 +48,8 @@ def main(page: ft.Page):
 
     def confirm_quick_sale(e):
         try:
-            p = float(price_field.value.replace(",", "."))
-            ship = float(shipping_field.value.replace(",", ".")) if shipping_field.visible else 0.0
+            p = float(str(price_field.value).replace(",", "."))
+            ship = float(str(shipping_field.value).replace(",", ".")) if shipping_field.visible else 0.0
         except Exception:
             show_snackbar("⚠️ يرجى إدخال سعر صحيح", color=ft.Colors.RED)
             return
@@ -94,12 +94,12 @@ def main(page: ft.Page):
         price_field.value = ""
         channel_dropdown.value = "Mağaza"
         shipping_field.visible = False
-        sale_dialog.title = ft.Text(f"بيع: {prod.title()} - {color.title()} ({size})")
+        sale_dialog.title = ft.Text(f"بيع: {str(prod).title()} - {str(color).title()} ({size})")
         sale_dialog.open = True
         page.update()
 
     # ----------------------------------------------------
-    # التبويب 1: المخزون
+    # التبويب 1: المخزون المجمّع
     # ----------------------------------------------------
     search_query = ft.TextField(hint_text="بحث عن موديل أو لون...", expand=True, prefix_icon=ft.Icons.SEARCH)
     filter_low_stock = ft.Switch(label="أوشك على النفاد ⚠️", value=False)
@@ -107,7 +107,7 @@ def main(page: ft.Page):
 
     def quick_add_one(prod, color, size, cost):
         add_or_update_variant(prod=prod, color=color, size=size, qty=1, cost=cost)
-        show_snackbar(f"✅ تم إضافة +1 إلى {prod.title()} ({size})")
+        show_snackbar(f"✅ تم إضافة +1 إلى {str(prod).title()} ({size})")
         refresh_all()
 
     def build_stock_view():
@@ -116,20 +116,22 @@ def main(page: ft.Page):
         
         grouped = {}
         for r in raw_stock:
-            key = (r["product_name"], r["color"])
+            p_name = r.get("product_name") or ""
+            c_name = r.get("color") or ""
+            key = (p_name, c_name)
             if key not in grouped:
                 grouped[key] = []
             grouped[key].append(r)
 
-        q = search_query.value.strip().lower() if search_query.value else ""
+        q = (search_query.value or "").strip().lower()
         only_low = bool(filter_low_stock.value)
 
         for (prod, color), variants in grouped.items():
-            if q and (q not in prod.lower() and q not in color.lower()):
+            if q and (q not in str(prod).lower() and q not in str(color).lower()):
                 continue
 
-            total_qty = sum(int(v["quantity"]) for v in variants)
-            if only_low and not any(int(v["quantity"]) <= 3 for v in variants):
+            total_qty = sum(int(v.get("quantity") or 0) for v in variants)
+            if only_low and not any(int(v.get("quantity") or 0) <= 3 for v in variants):
                 continue
 
             sizes_column = ft.Column(spacing=8, visible=False)
@@ -141,14 +143,15 @@ def main(page: ft.Page):
                 page.update()
 
             for v in variants:
-                s_qty = int(v["quantity"])
+                s_qty = int(v.get("quantity") or 0)
+                cost_val = float(v.get("cost_price") or 0.0)
                 badge_col = ft.Colors.GREEN if s_qty > 3 else (ft.Colors.ORANGE if s_qty > 0 else ft.Colors.RED)
                 
                 sizes_column.controls.append(
                     ft.Container(
                         content=ft.Row([
-                            ft.Text(f"مقاس: {v['size']}", weight=ft.FontWeight.BOLD, expand=True),
-                            ft.Text(f"التكلفة: {v['cost_price']} TL", size=12, color=ft.Colors.GREY_700),
+                            ft.Text(f"مقاس: {v.get('size', '-')}", weight=ft.FontWeight.BOLD, expand=True),
+                            ft.Text(f"التكلفة: {cost_val:.2f} TL", size=12, color=ft.Colors.GREY_700),
                             ft.Container(
                                 content=ft.Text(f"{s_qty} قطعة", color=ft.Colors.WHITE, size=11, weight=ft.FontWeight.BOLD),
                                 bgcolor=badge_col,
@@ -159,13 +162,13 @@ def main(page: ft.Page):
                                 icon=ft.Icons.REMOVE_CIRCLE_OUTLINE,
                                 icon_color=ft.Colors.RED_600,
                                 tooltip="تسجيل بيع (-1)",
-                                on_click=lambda e, p=prod, c=color, s=v["size"], cost=v["cost_price"]: open_sale_modal(p, c, s, cost)
+                                on_click=lambda e, p=prod, c=color, s=v.get("size", "-"), cost=cost_val: open_sale_modal(p, c, s, cost)
                             ),
                             ft.IconButton(
                                 icon=ft.Icons.ADD_CIRCLE_OUTLINE,
                                 icon_color=ft.Colors.GREEN_600,
                                 tooltip="إضافة قطعة (+1)",
-                                on_click=lambda e, p=prod, c=color, s=v["size"], cost=v["cost_price"]: quick_add_one(p, c, s, cost)
+                                on_click=lambda e, p=prod, c=color, s=v.get("size", "-"), cost=cost_val: quick_add_one(p, c, s, cost)
                             )
                         ]),
                         bgcolor=ft.Colors.GREY_50,
@@ -183,7 +186,7 @@ def main(page: ft.Page):
                                 content=ft.Row([
                                     ft.Icon(ft.Icons.CHECKROOM, color=ft.Colors.BLUE_900),
                                     ft.Column([
-                                        ft.Text(f"{prod.title()} - {color.title()}", weight=ft.FontWeight.BOLD, size=15),
+                                        ft.Text(f"{str(prod).title()} - {str(color).title()}", weight=ft.FontWeight.BOLD, size=15),
                                         ft.Text(f"إجمالي المخزون: {total_qty} قطعة (اضغط للتفاصيل)", size=12, color=ft.Colors.BLUE_GREY),
                                     ], expand=True),
                                     arrow_icon
@@ -213,9 +216,9 @@ def main(page: ft.Page):
 
     def update_dashboard():
         stats = get_financial_summary(days=1)
-        sold_count = stats.get("total_sold", 0)
-        rev = stats.get("total_revenue", 0.0)
-        prof = stats.get("net_profit", 0.0)
+        sold_count = int(stats.get("total_sold") or 0)
+        rev = float(stats.get("total_revenue") or 0.0)
+        prof = float(stats.get("net_profit") or 0.0)
 
         dashboard_card.content = ft.Card(
             content=ft.Container(
@@ -242,7 +245,7 @@ def main(page: ft.Page):
     )
 
     def process_ai_command(e):
-        if not ai_input.value.strip():
+        if not ai_input.value or not ai_input.value.strip():
             return
         show_snackbar("🤖 جاري المعالجة بالذكاء الاصطناعي...", color=ft.Colors.BLUE_GREY)
         res = analyze_intent(ai_input.value)
@@ -314,7 +317,7 @@ def main(page: ft.Page):
     ], expand=True)
 
     # ----------------------------------------------------
-    # شريط التنقل
+    # شريط التنقل السفلي
     # ----------------------------------------------------
     current_tab = ft.Column([tab_stock], expand=True)
 
