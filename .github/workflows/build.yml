@@ -54,7 +54,7 @@ jobs:
 
       - name: Build Android APK
         run: |
-          flet build apk --project "me_tekstil_erp" --org "com.metekstil.erp" --no-rich-output -v
+          flet build apk --project "me_tekstil_erp" --org "com.metekstil.erp" --flutter-build-args="--android-skip-build-dependency-validation" --no-rich-output -v
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
