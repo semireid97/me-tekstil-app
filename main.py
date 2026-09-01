@@ -5,19 +5,20 @@ import os
 import csv
 import flet as ft
 
-# تحديد مسار تخزين آمن ومتوافق 100% مع Android 15
-def get_db_path():
-    base_dir = os.environ.get("FLET_APP_STORAGE_DATA")
-    if not base_dir or not os.path.exists(base_dir):
-        base_dir = os.environ.get("HOME") or os.path.expanduser("~")
+def get_safe_db_path():
     try:
-        os.makedirs(base_dir, exist_ok=True)
+        data_dir = os.environ.get("FLET_APP_STORAGE_DATA")
+        if data_dir and os.path.exists(data_dir):
+            return os.path.join(data_dir, "app_inventory.db")
+        home_dir = os.environ.get("HOME") or os.path.expanduser("~")
+        if home_dir and os.path.exists(home_dir):
+            return os.path.join(home_dir, "app_inventory.db")
     except Exception:
         pass
-    return os.path.join(base_dir, "me_inventory.db")
+    return "app_inventory.db"
 
 def init_db():
-    db_path = get_db_path()
+    db_path = get_safe_db_path()
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
     cursor.execute("""
@@ -56,8 +57,8 @@ def main(page: ft.Page):
 
     try:
         init_db()
-    except Exception as e:
-        page.add(ft.Text(f"DB Error: {e}", color="red"))
+    except Exception as err:
+        page.add(ft.Text(f"DB Error: {err}", color="red"))
         page.update()
         return
 
@@ -80,7 +81,7 @@ def main(page: ft.Page):
 
     def update_metrics():
         try:
-            conn = sqlite3.connect(get_db_path())
+            conn = sqlite3.connect(get_safe_db_path())
             cursor = conn.cursor()
             cursor.execute("SELECT SUM(quantity) FROM variants")
             tot_stock = cursor.fetchone()[0] or 0
@@ -99,19 +100,6 @@ def main(page: ft.Page):
             conn.close()
         except Exception:
             pass
-
-    def load_stock():
-        nonlocal all_stock_data
-        try:
-            conn = sqlite3.connect(get_db_path())
-            cursor = conn.cursor()
-            cursor.execute("SELECT id, product_name, color, size, quantity, cost_price FROM variants ORDER BY product_name ASC, color ASC")
-            all_stock_data = cursor.fetchall()
-            conn.close()
-            update_metrics()
-            render_stock(all_stock_data)
-        except Exception as err:
-            show_in_page_alert(f"خطأ في قراءة المخزن: {err}", is_error=True)
 
     def render_stock(items):
         stock_list_view.controls.clear()
@@ -179,6 +167,19 @@ def main(page: ft.Page):
                 )
                 stock_list_view.controls.append(card)
         page.update()
+
+    def load_stock():
+        nonlocal all_stock_data
+        try:
+            conn = sqlite3.connect(get_safe_db_path())
+            cursor = conn.cursor()
+            cursor.execute("SELECT id, product_name, color, size, quantity, cost_price FROM variants ORDER BY product_name ASC, color ASC")
+            all_stock_data = cursor.fetchall()
+            conn.close()
+            update_metrics()
+            render_stock(all_stock_data)
+        except Exception as err:
+            show_in_page_alert(f"خطأ في قراءة المخزن: {err}", is_error=True)
 
     def filter_stock(query):
         q = query.strip().lower()
@@ -277,7 +278,7 @@ def main(page: ft.Page):
     # --- تصدير التقارير ---
     def export_excel_report(e):
         try:
-            conn = sqlite3.connect(get_db_path())
+            conn = sqlite3.connect(get_safe_db_path())
             cursor = conn.cursor()
             cursor.execute("SELECT product_name, color, size, quantity, cost_price, (quantity * cost_price) FROM variants ORDER BY product_name ASC")
             stock_rows = cursor.fetchall()
@@ -286,7 +287,7 @@ def main(page: ft.Page):
             conn.close()
 
             timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M")
-            export_dir = os.path.dirname(get_db_path())
+            export_dir = os.path.dirname(get_safe_db_path())
             file_name = os.path.join(export_dir, f"ME_Tekstil_Rapor_{timestamp}.csv")
             with open(file_name, mode="w", newline="", encoding="utf-8-sig") as f:
                 writer = csv.writer(f)
@@ -364,10 +365,10 @@ def main(page: ft.Page):
                         parsed_items.append((model_name, c_name, s, q, cost_price))
 
         if not parsed_items:
-            show_in_page_alert("⚠️ تعذر استخراج البيانات، تأكد من وضع النقطتين :", is_error=True)
+            show_in_page_alert("⚠️ تعذر استخراج البيانات، تأكد من وجود النقطتين :", is_error=True)
             return
 
-        conn = sqlite3.connect(get_db_path())
+        conn = sqlite3.connect(get_safe_db_path())
         cursor = conn.cursor()
         total_added = 0
         for item in parsed_items:
@@ -463,7 +464,4 @@ def main(page: ft.Page):
 
         max_qty = current_sale_context.get("max_qty", 0)
         if qty <= 0 or qty > max_qty:
-            show_in_page_alert(f"⚠️ الكمية غير صالحة! المتوفر: {max_qty}", is_error=True)
-            return
-
-        v_id = current_sale
+            show_in_page_alert(f"⚠️ الكم
