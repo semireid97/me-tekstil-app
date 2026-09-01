@@ -114,7 +114,6 @@ def main(page: ft.Page):
                     padding=14,
                     border_radius=14,
                     bgcolor="#FFFFFF",
-                    border=ft.border.all(1, "#E2E8F0"),
                     content=ft.Row(
                         alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
                         vertical_alignment=ft.CrossAxisAlignment.CENTER,
@@ -217,7 +216,6 @@ def main(page: ft.Page):
         sizes = []
         parsed_items = []
 
-        # قراءة أولية لتحديد اسم الموديل والتكلفة والمقاسات الصريحة
         for line in lines:
             l_low = line.lower()
             if any(k in l_low for k in ["تكلفة", "maliyet", "cost", "fiyat"]):
@@ -231,20 +229,17 @@ def main(page: ft.Page):
             elif ":" not in line and len(line.split()) >= 1 and not any(k in l_low for k in ["stok", "adet", "tl", "toplam"]):
                 model_name = line.strip().lower()
 
-        # إذا لم يتم تحديد مقاسات بشكل صريح، نحددها تلقائياً بناءً على اسم الموديل
         if not sizes:
             if any(w in model_name for w in ["pantolon", "tayt", "بنطلون"]):
                 sizes = ["34", "36", "38", "40", "42", "44"]
             else:
                 sizes = ["S", "M", "L", "XL", "2XL"]
 
-        # استخراج الألوان والكميات
         for line in lines:
             if ":" in line:
                 c_name, q_str = line.split(":", 1)
                 c_name = c_name.strip().lower()
                 
-                # تخطي أسطر التعريفات
                 if any(w in c_name for w in ["maliyet", "beden", "size", "تكلفة", "مقاس"]):
                     continue
 
@@ -252,10 +247,7 @@ def main(page: ft.Page):
                 if raw_nums:
                     quantities = [int(n) for n in raw_nums]
                     for i, q in enumerate(quantities):
-                        if i < len(sizes):
-                            s = sizes[i]
-                        else:
-                            s = f"T{i+1}"
+                        s = sizes[i] if i < len(sizes) else f"T{i+1}"
                         parsed_items.append((model_name, c_name, s, q, cost_price))
 
         if not parsed_items:
@@ -286,7 +278,6 @@ def main(page: ft.Page):
         padding=14,
         bgcolor="#EEF2FF",
         border_radius=12,
-        border=ft.border.all(1, "#C7D2FE"),
         content=ft.Column(
             spacing=10,
             controls=[
@@ -389,7 +380,6 @@ def main(page: ft.Page):
         padding=14,
         bgcolor="#DCFCE7",
         border_radius=12,
-        border=ft.border.all(1, "#86EFAC"),
         content=ft.Column(
             spacing=10,
             controls=[
@@ -493,4 +483,4 @@ def main(page: ft.Page):
     load_stock()
 
 ft.app(target=main)
-                        
+                    
