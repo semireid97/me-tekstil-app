@@ -1,66 +1,53 @@
-import sqlite3
+import json
 import datetime
 import re
 import os
 import csv
+import urllib.request
 import flet as ft
 
-def get_safe_db_path():
+# رابط Google Apps Script الخاص بك
+GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxm977X_VWNWq3mICJlNTml1W1MbnkkwHvmwIWXpNbChP3gfPLfiTqGxuifV2_k7r0aVA/exec"
+
+def get_data_dir():
+    paths = [
+        os.environ.get("FLET_APP_STORAGE_DATA"),
+        os.environ.get("HOME"),
+        os.path.expanduser("~"),
+        "."
+    ]
+    for p in paths:
+        if p and os.path.exists(p):
+            return p
+    return "."
+
+def get_db_file():
+    return os.path.join(get_data_dir(), "erp_store_data.json")
+
+def load_db():
+    fpath = get_db_file()
+    default_data = {"variants": [], "sales": []}
+    if not os.path.exists(fpath):
+        save_db(default_data)
+        return default_data
     try:
-        data_dir = os.environ.get("FLET_APP_STORAGE_DATA")
-        if data_dir and os.path.exists(data_dir):
-            return os.path.join(data_dir, "app_inventory.db")
-        home_dir = os.environ.get("HOME") or os.path.expanduser("~")
-        if home_dir and os.path.exists(home_dir):
-            return os.path.join(home_dir, "app_inventory.db")
+        with open(fpath, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return default_data
+
+def save_db(data):
+    try:
+        with open(get_db_file(), "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
     except Exception:
         pass
-    return "app_inventory.db"
-
-def init_db():
-    db_path = get_safe_db_path()
-    conn = sqlite3.connect(db_path)
-    cursor = conn.cursor()
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS variants (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            product_name TEXT NOT NULL,
-            color TEXT NOT NULL,
-            size TEXT NOT NULL,
-            quantity INTEGER NOT NULL,
-            cost_price REAL NOT NULL,
-            UNIQUE(product_name, color, size)
-        )
-    """)
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS sales (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            product_name TEXT NOT NULL,
-            color TEXT NOT NULL,
-            size TEXT NOT NULL,
-            quantity INTEGER NOT NULL,
-            cost_price REAL NOT NULL,
-            sale_price REAL NOT NULL,
-            channel TEXT NOT NULL,
-            deductions REAL DEFAULT 0.0,
-            sale_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    """)
-    conn.commit()
-    conn.close()
 
 def main(page: ft.Page):
     page.title = "M&E Tekstil ERP"
     page.padding = 10
     page.scroll = ft.ScrollMode.AUTO
     page.bgcolor = "#F8FAFC"
-
-    try:
-        init_db()
-    except Exception as err:
-        page.add(ft.Text(f"DB Error: {err}", color="red"))
-        page.update()
-        return
 
     stat_total_stock = ft.Text("0", size=15, weight=ft.FontWeight.BOLD, color="#1E3A8A")
     stat_today_sales = ft.Text("0", size=15, weight=ft.FontWeight.BOLD, color="#312E81")
@@ -79,25 +66,23 @@ def main(page: ft.Page):
         status_banner.visible = True
         page.update()
 
-    def update_metrics():
+    def update_metrics(db_data):
         try:
-            conn = sqlite3.connect(get_safe_db_path())
-            cursor = conn.cursor()
-            cursor.execute("SELECT SUM(quantity) FROM variants")
-            tot_stock = cursor.fetchone()[0] or 0
+            tot_stock = sum(item.get("quantity", 0) for item in db_data.get("variants", []))
             stat_total_stock.value = f"{tot_stock} قطعة"
 
-            today_str = datetime.datetime.now().strftime("%Y-%m-%d 00:00:00")
-            cursor.execute("""
-                SELECT SUM(quantity), SUM((sale_price - cost_price) * quantity - deductions)
-                FROM sales WHERE sale_date >= ?
-            """, (today_str,))
-            s_row = cursor.fetchone()
-            t_qty = s_row[0] or 0
-            t_profit = s_row[1] or 0.0
+            today_date = datetime.datetime.now().strftime("%Y-%m-%d")
+            today_sales = [
+                s for s in db_data.get("sales", [])
+                if s.get("sale_date", "").startswith(today_date)
+            ]
+            t_qty = sum(s.get("quantity", 0) for s in today_sales)
+            t_profit = sum(
+                ((s.get("sale_price", 0) - s.get("cost_price", 0)) * s.get("quantity", 0)) - s.get("deductions", 0)
+                for s in today_sales
+            )
             stat_today_sales.value = f"{t_qty} قطعة"
             stat_today_profit.value = f"+{t_profit:.2f} TL"
-            conn.close()
         except Exception:
             pass
 
@@ -118,7 +103,13 @@ def main(page: ft.Page):
             )
         else:
             for item in items:
-                v_id, name, color, size, qty, cost = item
+                v_id = item["id"]
+                name = item["product_name"]
+                color = item["color"]
+                size = item["size"]
+                qty = item["quantity"]
+                cost = item["cost_price"]
+
                 status_color = "#16A34A" if qty > 3 else ("#EA580C" if qty > 0 else "#DC2626")
                 status_text_val = "متوفر" if qty > 3 else ("قليل" if qty > 0 else "نفد")
 
@@ -171,15 +162,12 @@ def main(page: ft.Page):
     def load_stock():
         nonlocal all_stock_data
         try:
-            conn = sqlite3.connect(get_safe_db_path())
-            cursor = conn.cursor()
-            cursor.execute("SELECT id, product_name, color, size, quantity, cost_price FROM variants ORDER BY product_name ASC, color ASC")
-            all_stock_data = cursor.fetchall()
-            conn.close()
-            update_metrics()
+            db_data = load_db()
+            all_stock_data = sorted(db_data.get("variants", []), key=lambda x: (x.get("product_name", ""), x.get("color", "")))
+            update_metrics(db_data)
             render_stock(all_stock_data)
         except Exception as err:
-            show_in_page_alert(f"خطأ في قراءة المخزن: {err}", is_error=True)
+            show_in_page_alert(f"خطأ: {err}", is_error=True)
 
     def filter_stock(query):
         q = query.strip().lower()
@@ -188,9 +176,49 @@ def main(page: ft.Page):
         else:
             filtered = [
                 it for it in all_stock_data
-                if q in it[1].lower() or q in it[2].lower() or q in it[3].lower()
+                if q in it.get("product_name", "").lower() or q in it.get("color", "").lower() or q in it.get("size", "").lower()
             ]
             render_stock(filtered)
+
+    # --- مزامنة Google Sheets ---
+    def sync_to_google_sheets(e):
+        show_in_page_alert("⏳ جاري المزامنة مع Google Sheets...")
+        try:
+            db_data = load_db()
+            payload = {
+                "action": "sync_all",
+                "variants": db_data.get("variants", []),
+                "sales": []
+            }
+
+            for s in db_data.get("sales", []):
+                net_p = (s.get("quantity", 0) * s.get("sale_price", 0)) - s.get("deductions", 0) - (s.get("quantity", 0) * s.get("cost_price", 0))
+                payload["sales"].append({
+                    "sale_date": s.get("sale_date"),
+                    "channel": s.get("channel"),
+                    "product_name": s.get("product_name"),
+                    "color": s.get("color"),
+                    "size": s.get("size"),
+                    "quantity": s.get("quantity"),
+                    "sale_price": s.get("sale_price"),
+                    "net_profit": net_p
+                })
+
+            req = urllib.request.Request(
+                GOOGLE_SCRIPT_URL,
+                data=json.dumps(payload).encode("utf-8"),
+                headers={"Content-Type": "application/json"}
+            )
+
+            with urllib.request.urlopen(req, timeout=15) as response:
+                res = json.loads(response.read().decode("utf-8"))
+                if res.get("status") == "success":
+                    show_in_page_alert("☁️ تمت المزامنة مع Google Sheets بنجاح!")
+                else:
+                    show_in_page_alert("⚠️ تم الاتصال ولكن تعذر تحديث الجدول", is_error=True)
+
+        except Exception as ex:
+            show_in_page_alert(f"⚠️ تعذر الاتصال بالسحاب: {ex}", is_error=True)
 
     # --- حاسبة التسعير ---
     calc_cost_input = ft.TextField(label="التكلفة (TL)", value="140", keyboard_type=ft.KeyboardType.NUMBER, border_radius=8, bgcolor=ft.colors.WHITE, dense=True)
@@ -278,16 +306,21 @@ def main(page: ft.Page):
     # --- تصدير التقارير ---
     def export_excel_report(e):
         try:
-            conn = sqlite3.connect(get_safe_db_path())
-            cursor = conn.cursor()
-            cursor.execute("SELECT product_name, color, size, quantity, cost_price, (quantity * cost_price) FROM variants ORDER BY product_name ASC")
-            stock_rows = cursor.fetchall()
-            cursor.execute("SELECT sale_date, channel, product_name, color, size, quantity, cost_price, sale_price, (quantity * sale_price), deductions, ((quantity * sale_price) - deductions - (quantity * cost_price)) FROM sales ORDER BY id DESC")
-            sales_rows = cursor.fetchall()
-            conn.close()
+            db_data = load_db()
+            stock_rows = [
+                [it["product_name"], it["color"], it["size"], it["quantity"], it["cost_price"], it["quantity"] * it["cost_price"]]
+                for it in db_data.get("variants", [])
+            ]
+            sales_rows = [
+                [s.get("sale_date"), s.get("channel"), s.get("product_name"), s.get("color"), s.get("size"),
+                 s.get("quantity"), s.get("cost_price"), s.get("sale_price"),
+                 s.get("quantity", 0) * s.get("sale_price", 0), s.get("deductions", 0),
+                 ((s.get("quantity", 0) * s.get("sale_price", 0)) - s.get("deductions", 0) - (s.get("quantity", 0) * s.get("cost_price", 0)))]
+                for s in reversed(db_data.get("sales", []))
+            ]
 
             timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M")
-            export_dir = os.path.dirname(get_safe_db_path())
+            export_dir = get_data_dir()
             file_name = os.path.join(export_dir, f"ME_Tekstil_Rapor_{timestamp}.csv")
             with open(file_name, mode="w", newline="", encoding="utf-8-sig") as f:
                 writer = csv.writer(f)
@@ -305,7 +338,7 @@ def main(page: ft.Page):
         except Exception as ex:
             show_in_page_alert(f"⚠️ خطأ أثناء التصدير: {ex}", is_error=True)
 
-    # --- لوحة اللصق الذكي ---
+    # --- اللصق الذكي ---
     sample_pantolon = "Zara Krep Pantolon\nMaliyet: 140\nBeden: 34, 36, 38, 40, 42, 44\nsiyah: 7, 7, 14, 14, 7, 7\nlaci: 1, 1, 2, 2, 1, 1\nbordo: 5, 5, 10, 10, 5, 5"
     sample_blouse = "Kare Yaka Bluz\nMaliyet: 95\nBeden: S, M, L, XL, 2XL\nsiyah: 10, 10, 15, 15, 10\npudra: 10, 10, 15, 15, 10\nbeyaz: 10, 10, 15, 15, 10"
 
@@ -362,26 +395,38 @@ def main(page: ft.Page):
                     quantities = [int(n) for n in raw_nums]
                     for i, q in enumerate(quantities):
                         s = sizes[i] if i < len(sizes) else f"T{i+1}"
-                        parsed_items.append((model_name, c_name, s, q, cost_price))
+                        parsed_items.append({"name": model_name, "color": c_name, "size": s, "qty": q, "cost": cost_price})
 
         if not parsed_items:
-            show_in_page_alert("⚠️ تعذر استخراج البيانات، تأكد من وجود النقطتين :", is_error=True)
+            show_in_page_alert("⚠️ تعذر استخراج البيانات، تأكد من وضع النقطتين :", is_error=True)
             return
 
-        conn = sqlite3.connect(get_safe_db_path())
-        cursor = conn.cursor()
+        db_data = load_db()
+        variants = db_data.get("variants", [])
         total_added = 0
+
         for item in parsed_items:
-            total_added += item[3]
-            cursor.execute("""
-                INSERT INTO variants (product_name, color, size, quantity, cost_price)
-                VALUES (?, ?, ?, ?, ?)
-                ON CONFLICT(product_name, color, size) DO UPDATE SET
-                quantity = quantity + excluded.quantity,
-                cost_price = excluded.cost_price
-            """, item)
-        conn.commit()
-        conn.close()
+            total_added += item["qty"]
+            found = False
+            for v in variants:
+                if v["product_name"] == item["name"] and v["color"] == item["color"] and v["size"] == item["size"]:
+                    v["quantity"] += item["qty"]
+                    v["cost_price"] = item["cost"]
+                    found = True
+                    break
+            if not found:
+                new_id = (max([v["id"] for v in variants], default=0)) + 1
+                variants.append({
+                    "id": new_id,
+                    "product_name": item["name"],
+                    "color": item["color"],
+                    "size": item["size"],
+                    "quantity": item["qty"],
+                    "cost_price": item["cost"]
+                })
+
+        db_data["variants"] = variants
+        save_db(db_data)
 
         smart_paste_panel.visible = False
         show_in_page_alert(f"✅ تمت إضافة {total_added} قطعة في المخزن!")
@@ -426,7 +471,7 @@ def main(page: ft.Page):
         smart_paste_panel.visible = not smart_paste_panel.visible
         page.update()
 
-    # --- لوحة البيع ---
+    # --- تسجيل البيع ---
     sale_panel_title = ft.Text("", size=13, weight=ft.FontWeight.BOLD, color="#0F172A")
     sale_qty_input = ft.TextField(label="الكمية", value="1", keyboard_type=ft.KeyboardType.NUMBER, border_radius=8, bgcolor=ft.colors.WHITE, dense=True)
     sale_price_input = ft.TextField(label="سعر البيع (TL)", value="250", keyboard_type=ft.KeyboardType.NUMBER, border_radius=8, bgcolor=ft.colors.WHITE, dense=True)
@@ -464,4 +509,149 @@ def main(page: ft.Page):
 
         max_qty = current_sale_context.get("max_qty", 0)
         if qty <= 0 or qty > max_qty:
-            show_in_page_alert(f"⚠️ الكم
+            show_in_page_alert(f"⚠️ الكمية غير صالحة! المتوفر: {max_qty}", is_error=True)
+            return
+
+        v_id = current_sale_context["v_id"]
+        name = current_sale_context["name"]
+        color = current_sale_context["color"]
+        size = current_sale_context["size"]
+        cost = current_sale_context["cost_price"]
+        deductions = (price * qty * 0.167) if channel == "Trendyol" else 0.0
+
+        db_data = load_db()
+        for v in db_data.get("variants", []):
+            if v["id"] == v_id:
+                v["quantity"] -= qty
+                break
+
+        now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        db_data.setdefault("sales", []).append({
+            "product_name": name,
+            "color": color,
+            "size": size,
+            "quantity": qty,
+            "cost_price": cost,
+            "sale_price": price,
+            "channel": channel,
+            "deductions": deductions,
+            "sale_date": now_str
+        })
+
+        save_db(db_data)
+        sale_panel.visible = False
+        show_in_page_alert(f"✅ تم تسجيل بيع {qty} قطعة!")
+        load_stock()
+
+    sale_panel = ft.Container(
+        visible=False,
+        padding=10,
+        bgcolor="#DCFCE7",
+        border_radius=10,
+        content=ft.Column(
+            spacing=6,
+            controls=[
+                ft.Row(
+                    alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                    controls=[
+                        sale_panel_title,
+                        ft.IconButton(ft.icons.CLOSE, icon_color="#15803D", on_click=lambda e: setattr(sale_panel, 'visible', False) or page.update())
+                    ]
+                ),
+                sale_qty_input,
+                sale_price_input,
+                sale_channel_dropdown,
+                ft.Row(
+                    alignment=ft.MainAxisAlignment.END,
+                    spacing=6,
+                    controls=[
+                        ft.TextButton("إلغاء", on_click=lambda e: setattr(sale_panel, 'visible', False) or page.update()),
+                        ft.ElevatedButton("تأكيد وخصم", bgcolor="#16A34A", color=ft.colors.WHITE, on_click=confirm_sale_action)
+                    ]
+                )
+            ]
+        )
+    )
+
+    page.appbar = ft.AppBar(
+        title=ft.Text("M&E Tekstil ERP", weight=ft.FontWeight.BOLD, color=ft.colors.WHITE),
+        center_title=True,
+        bgcolor="#0F172A",
+        actions=[
+            ft.IconButton(ft.icons.REFRESH, tooltip="تحديث", icon_color=ft.colors.WHITE, on_click=lambda e: load_stock())
+        ]
+    )
+
+    def kpi_card(title, value_widget, icon, bg_color):
+        return ft.Container(
+            expand=True,
+            padding=8,
+            border_radius=8,
+            bgcolor=bg_color,
+            content=ft.Column(
+                spacing=2,
+                controls=[
+                    ft.Row(
+                        alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                        controls=[
+                            ft.Text(title, size=10, color="#475569", weight=ft.FontWeight.W_500),
+                            ft.Icon(icon, size=14, color="#475569")
+                        ]
+                    ),
+                    value_widget
+                ]
+            )
+        )
+
+    dashboard_row = ft.Row(
+        spacing=6,
+        controls=[
+            kpi_card("المخزن", stat_total_stock, ft.icons.INVENTORY_2, "#EFF6FF"),
+            kpi_card("المبيعات", stat_today_sales, ft.icons.SHOPPING_BAG, "#EEF2FF"),
+            kpi_card("الأرباح", stat_today_profit, ft.icons.ATTACH_MONEY, "#F0FDF4"),
+        ]
+    )
+
+    action_buttons_row = ft.Row(
+        spacing=4,
+        controls=[
+            ft.ElevatedButton("📋 لصق ذكي", icon=ft.icons.PASTE, bgcolor="#4F46E5", color=ft.colors.WHITE, on_click=lambda e: toggle_smart_paste()),
+            ft.ElevatedButton("🧮 حاسبة", icon=ft.icons.CALCULATE, bgcolor="#D97706", color=ft.colors.WHITE, on_click=lambda e: toggle_pricing_panel()),
+            ft.ElevatedButton("📥 تصدير", icon=ft.icons.DOWNLOAD, bgcolor="#059669", color=ft.colors.WHITE, on_click=export_excel_report),
+            ft.ElevatedButton("☁️ مزامنة", icon=ft.icons.SYNC, bgcolor="#0284C7", color=ft.colors.WHITE, on_click=sync_to_google_sheets),
+        ]
+    )
+
+    search_input = ft.TextField(
+        hint_text="ابحث عن موديل، لون، مقاس...",
+        prefix_icon=ft.icons.SEARCH,
+        border_radius=8,
+        bgcolor=ft.colors.WHITE,
+        dense=True,
+        on_change=lambda e: filter_stock(e.control.value)
+    )
+
+    page.add(
+        status_banner,
+        dashboard_row,
+        ft.Container(height=2),
+        action_buttons_row,
+        smart_paste_panel,
+        pricing_panel,
+        sale_panel,
+        ft.Container(height=2),
+        search_input,
+        ft.Container(height=2),
+        ft.Row(
+            alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+            controls=[
+                ft.Text("📦 المخزون الحالي", size=14, weight=ft.FontWeight.BOLD, color="#0F172A"),
+            ]
+        ),
+        stock_list_view
+    )
+
+    page.update()
+    load_stock()
+
+ft.app(target=main)
