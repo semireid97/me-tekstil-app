@@ -104,7 +104,7 @@ def main(page: ft.Page):
                             ft.Text("لا توجد منتجات مسجلة في المخزن", color="#64748B", size=15)
                         ]
                     ),
-                    alignment=ft.alignment.center,
+                    alignment=ft.Alignment(0, 0),
                     padding=30
                 )
             )
@@ -390,3 +390,4 @@ def main(page: ft.Page):
     load_stock()
 
 ft.app(target=main)
+                
