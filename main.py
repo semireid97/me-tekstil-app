@@ -5,14 +5,17 @@ import os
 import csv
 import flet as ft
 
-# تحديد مسار تخزين آمن وقابل للكتابة على نظام أندرويد
+# تحديد مسار تخزين آمن ومتوافق 100% مع Android 15
 def get_db_path():
-    app_data = os.environ.get("FLET_APP_STORAGE_DATA")
-    if app_data and os.path.exists(app_data):
-        return os.path.join(app_data, "inventory.db")
-    return "inventory.db"
+    base_dir = os.environ.get("FLET_APP_STORAGE_DATA")
+    if not base_dir or not os.path.exists(base_dir):
+        base_dir = os.environ.get("HOME") or os.path.expanduser("~")
+    try:
+        os.makedirs(base_dir, exist_ok=True)
+    except Exception:
+        pass
+    return os.path.join(base_dir, "me_inventory.db")
 
-# --- تهيئة قاعدة البيانات ---
 def init_db():
     db_path = get_db_path()
     conn = sqlite3.connect(db_path)
@@ -46,20 +49,21 @@ def init_db():
     conn.close()
 
 def main(page: ft.Page):
-    try:
-        init_db()
-    except Exception as e:
-        page.add(ft.Text(f"DB Init Error: {e}", color=ft.colors.RED))
-        return
-
     page.title = "M&E Tekstil ERP"
     page.padding = 10
     page.scroll = ft.ScrollMode.AUTO
     page.bgcolor = "#F8FAFC"
 
-    stat_total_stock = ft.Text("0", size=16, weight=ft.FontWeight.BOLD, color="#1E3A8A")
-    stat_today_sales = ft.Text("0", size=16, weight=ft.FontWeight.BOLD, color="#312E81")
-    stat_today_profit = ft.Text("0.00 TL", size=16, weight=ft.FontWeight.BOLD, color="#14532D")
+    try:
+        init_db()
+    except Exception as e:
+        page.add(ft.Text(f"DB Error: {e}", color="red"))
+        page.update()
+        return
+
+    stat_total_stock = ft.Text("0", size=15, weight=ft.FontWeight.BOLD, color="#1E3A8A")
+    stat_today_sales = ft.Text("0", size=15, weight=ft.FontWeight.BOLD, color="#312E81")
+    stat_today_profit = ft.Text("0.00 TL", size=15, weight=ft.FontWeight.BOLD, color="#14532D")
 
     stock_list_view = ft.Column(spacing=8)
     all_stock_data = []
@@ -187,7 +191,7 @@ def main(page: ft.Page):
             ]
             render_stock(filtered)
 
-    # --- حاسبة التسعير وعمولات ترينديول ---
+    # --- حاسبة التسعير ---
     calc_cost_input = ft.TextField(label="التكلفة (TL)", value="140", keyboard_type=ft.KeyboardType.NUMBER, border_radius=8, bgcolor=ft.colors.WHITE, dense=True)
     calc_profit_input = ft.TextField(label="الربح المطلوب (TL)", value="100", keyboard_type=ft.KeyboardType.NUMBER, border_radius=8, bgcolor=ft.colors.WHITE, dense=True)
     calc_shipping_input = ft.TextField(label="الشحن (TL)", value="35", keyboard_type=ft.KeyboardType.NUMBER, border_radius=8, bgcolor=ft.colors.WHITE, dense=True)
@@ -213,7 +217,7 @@ def main(page: ft.Page):
         calc_trendyol_price_text.value = f"{trendyol_price:.2f} TL"
         calc_details_text.value = (
             f"عمولة ترينديول (16.7%): {commission_val:.2f} TL | الشحن: {shipping:.2f} TL | "
-            f"التكلفة: {cost:.2f} TL ➔ الصافي المتبقي: +{desired_profit:.2f} TL"
+            f"التكلفة: {cost:.2f} TL ➔ الصافي: +{desired_profit:.2f} TL"
         )
         page.update()
 
@@ -282,7 +286,7 @@ def main(page: ft.Page):
             conn.close()
 
             timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M")
-            export_dir = os.environ.get("FLET_APP_STORAGE_DATA") or "."
+            export_dir = os.path.dirname(get_db_path())
             file_name = os.path.join(export_dir, f"ME_Tekstil_Rapor_{timestamp}.csv")
             with open(file_name, mode="w", newline="", encoding="utf-8-sig") as f:
                 writer = csv.writer(f)
@@ -462,6 +466,4 @@ def main(page: ft.Page):
             show_in_page_alert(f"⚠️ الكمية غير صالحة! المتوفر: {max_qty}", is_error=True)
             return
 
-        v_id = current_sale_context["v_id"]
-        name = current_sale_context["name"]
-        co
+        v_id = current_sale
