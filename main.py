@@ -1,6 +1,8 @@
 import sqlite3
 import datetime
 import re
+import os
+import csv
 import flet as ft
 
 # --- تهيئة قاعدة البيانات ---
@@ -49,6 +51,7 @@ def main(page: ft.Page):
     stock_list_view = ft.Column(spacing=8)
     all_stock_data = []
 
+    # شريط إشعار حالة داخلي
     status_banner = ft.Container(visible=False, padding=10, border_radius=8)
     status_text = ft.Text("", color="#FFFFFF", weight=ft.FontWeight.BOLD)
     status_banner.content = status_text
@@ -128,7 +131,7 @@ def main(page: ft.Page):
                                             ft.Container(
                                                 content=ft.Text(size, size=12, weight=ft.FontWeight.BOLD, color="#1D4ED8"),
                                                 bgcolor="#EFF6FF",
-                                                padding=ft.padding.symmetric(horizontal=8, vertical=2),
+                                                padding=6,
                                                 border_radius=6
                                             )
                                         ]
@@ -168,7 +171,120 @@ def main(page: ft.Page):
             ]
             render_stock(filtered)
 
-    # --- نماذج اللصق الجاهزة ---
+    # --- حاسبة التسعير وعمولات ترينديول ---
+    calc_cost_input = ft.TextField(label="التكلفة (TL)", value="140", keyboard_type=ft.KeyboardType.NUMBER, border_radius=8, bgcolor="#FFFFFF")
+    calc_profit_input = ft.TextField(label="الربح المطلوب (TL)", value="100", keyboard_type=ft.KeyboardType.NUMBER, border_radius=8, bgcolor="#FFFFFF")
+    calc_shipping_input = ft.TextField(label="الشحن (TL)", value="35", keyboard_type=ft.KeyboardType.NUMBER, border_radius=8, bgcolor="#FFFFFF")
+
+    calc_store_price_text = ft.Text("0.00 TL", size=16, weight=ft.FontWeight.BOLD, color="#1D4ED8")
+    calc_trendyol_price_text = ft.Text("0.00 TL", size=16, weight=ft.FontWeight.BOLD, color="#EA580C")
+    calc_details_text = ft.Text("", size=12, color="#475569")
+
+    def run_pricing_calc(e):
+        try:
+            cost = float(calc_cost_input.value.replace(",", "."))
+            desired_profit = float(calc_profit_input.value.replace(",", "."))
+            shipping = float(calc_shipping_input.value.replace(",", "."))
+        except ValueError:
+            show_in_page_alert("⚠️ يرجى إدخال أرقام صحيحة في الحاسبة!", is_error=True)
+            return
+
+        store_price = cost + desired_profit
+        trendyol_price = (cost + desired_profit + shipping) / (1 - 0.167)
+        commission_val = trendyol_price * 0.167
+
+        calc_store_price_text.value = f"{store_price:.2f} TL"
+        calc_trendyol_price_text.value = f"{trendyol_price:.2f} TL"
+        calc_details_text.value = (
+            f"💡 عمولة ترينديول (16.7%): {commission_val:.2f} TL | الشحن: {shipping:.2f} TL | "
+            f"التكلفة: {cost:.2f} TL ➔ يتبقى لك في الجيب صافي: +{desired_profit:.2f} TL"
+        )
+        page.update()
+
+    pricing_panel = ft.Container(
+        visible=False,
+        padding=14,
+        bgcolor="#FFFBEB",
+        border_radius=12,
+        content=ft.Column(
+            spacing=10,
+            controls=[
+                ft.Row(
+                    alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                    controls=[
+                        ft.Text("🧮 محاكي التسعير وعمولات ترينديول", size=16, weight=ft.FontWeight.BOLD, color="#B45309"),
+                        ft.IconButton(ft.Icons.CLOSE, icon_color="#B45309", on_click=lambda e: toggle_pricing_panel())
+                    ]
+                ),
+                ft.Row(
+                    spacing=6,
+                    controls=[
+                        ft.Container(calc_cost_input, expand=True),
+                        ft.Container(calc_profit_input, expand=True),
+                        ft.Container(calc_shipping_input, expand=True)
+                    ]
+                ),
+                ft.ElevatedButton("⚡ حساب الأسعار المقترحة", bgcolor="#D97706", color="#FFFFFF", on_click=run_pricing_calc),
+                ft.Divider(),
+                ft.Row(
+                    alignment=ft.MainAxisAlignment.SPACE_AROUND,
+                    controls=[
+                        ft.Column(
+                            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                            controls=[
+                                ft.Text("سعر البيع في المتجر / نقداً", size=12, color="#475569"),
+                                calc_store_price_text
+                            ]
+                        ),
+                        ft.Column(
+                            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                            controls=[
+                                ft.Text("سعر البيع على Trendyol", size=12, color="#475569"),
+                                calc_trendyol_price_text
+                            ]
+                        )
+                    ]
+                ),
+                calc_details_text
+            ]
+        )
+    )
+
+    def toggle_pricing_panel():
+        pricing_panel.visible = not pricing_panel.visible
+        page.update()
+
+    # --- تصدير التقارير ---
+    def export_excel_report(e):
+        try:
+            conn = sqlite3.connect("inventory.db")
+            cursor = conn.cursor()
+            cursor.execute("SELECT product_name, color, size, quantity, cost_price, (quantity * cost_price) FROM variants ORDER BY product_name ASC")
+            stock_rows = cursor.fetchall()
+            cursor.execute("SELECT sale_date, channel, product_name, color, size, quantity, cost_price, sale_price, (quantity * sale_price), deductions, ((quantity * sale_price) - deductions - (quantity * cost_price)) FROM sales ORDER BY id DESC")
+            sales_rows = cursor.fetchall()
+            conn.close()
+
+            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M")
+            file_name = f"ME_Tekstil_Rapor_{timestamp}.csv"
+            with open(file_name, mode="w", newline="", encoding="utf-8-sig") as f:
+                writer = csv.writer(f)
+                writer.writerow(["=== GUNCEL STOK LISTESI ==="])
+                writer.writerow(["Urun", "Renk", "Beden", "Stok Adedi", "Birim Maliyet (TL)", "Toplam Maliyet Tutari (TL)"])
+                for r in stock_rows:
+                    writer.writerow(r)
+                writer.writerow([])
+                writer.writerow(["=== SATIS VE KAR GECMISI ==="])
+                writer.writerow(["Tarih", "Kanal", "Urun", "Renk", "Beden", "Satilan Adet", "Birim Maliyet", "Satis Fiyati", "Toplam Ciro", "Platform Kesintisi", "Net Kar"])
+                for sr in sales_rows:
+                    writer.writerow(sr)
+
+            full_path = os.path.abspath(file_name)
+            show_in_page_alert(f"✅ تم تصدير التقرير بنجاح في: {full_path}")
+        except Exception as ex:
+            show_in_page_alert(f"⚠️ خطأ أثناء التصدير: {ex}", is_error=True)
+
+    # --- لوحة اللصق الذكي ---
     sample_pantolon = (
         "Zara Krep Pantolon\n"
         "Maliyet: 140\n"
@@ -312,7 +428,7 @@ def main(page: ft.Page):
         smart_paste_panel.visible = not smart_paste_panel.visible
         page.update()
 
-    # --- لوحة البيع المدمجة داخل الصفحة ---
+    # --- لوحة البيع ---
     sale_panel_title = ft.Text("", size=15, weight=ft.FontWeight.BOLD, color="#0F172A")
     sale_qty_input = ft.TextField(label="الكمية المباعة", value="1", keyboard_type=ft.KeyboardType.NUMBER, border_radius=8, bgcolor="#FFFFFF")
     sale_price_input = ft.TextField(label="سعر البيع للقطعة (TL)", value="250", keyboard_type=ft.KeyboardType.NUMBER, border_radius=8, bgcolor="#FFFFFF")
@@ -361,126 +477,4 @@ def main(page: ft.Page):
 
         deductions = (price * qty * 0.167) if channel == "Trendyol" else 0.0
 
-        conn = sqlite3.connect("inventory.db")
-        cursor = conn.cursor()
-        cursor.execute("UPDATE variants SET quantity = quantity - ? WHERE id = ?", (qty, v_id))
-        cursor.execute("""
-            INSERT INTO sales (product_name, color, size, quantity, cost_price, sale_price, channel, deductions)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        """, (name, color, size, qty, cost, price, channel, deductions))
-        conn.commit()
-        conn.close()
-
-        sale_panel.visible = False
-        show_in_page_alert(f"✅ تم تسجيل بيع {qty} قطعة بنجاح!")
-        load_stock()
-
-    sale_panel = ft.Container(
-        visible=False,
-        padding=14,
-        bgcolor="#DCFCE7",
-        border_radius=12,
-        content=ft.Column(
-            spacing=10,
-            controls=[
-                ft.Row(
-                    alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-                    controls=[
-                        sale_panel_title,
-                        ft.IconButton(ft.Icons.CLOSE, icon_color="#15803D", on_click=lambda e: setattr(sale_panel, 'visible', False) or page.update())
-                    ]
-                ),
-                sale_qty_input,
-                sale_price_input,
-                sale_channel_dropdown,
-                ft.Row(
-                    alignment=ft.MainAxisAlignment.END,
-                    spacing=8,
-                    controls=[
-                        ft.TextButton("إلغاء", on_click=lambda e: setattr(sale_panel, 'visible', False) or page.update()),
-                        ft.ElevatedButton("تأكيد وخصم من المخزن", bgcolor="#16A34A", color="#FFFFFF", on_click=confirm_sale_action)
-                    ]
-                )
-            ]
-        )
-    )
-
-    # --- شريط التطبيق والمؤشرات ---
-    page.appbar = ft.AppBar(
-        title=ft.Text("M&E Tekstil ERP", weight=ft.FontWeight.BOLD, color="#FFFFFF"),
-        center_title=True,
-        bgcolor="#0F172A",
-        actions=[
-            ft.IconButton(ft.Icons.REFRESH, tooltip="تحديث", icon_color="#FFFFFF", on_click=lambda e: load_stock())
-        ]
-    )
-
-    def kpi_card(title, value_widget, icon, bg_color):
-        return ft.Container(
-            expand=True,
-            padding=12,
-            border_radius=12,
-            bgcolor=bg_color,
-            content=ft.Column(
-                spacing=4,
-                controls=[
-                    ft.Row(
-                        alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-                        controls=[
-                            ft.Text(title, size=11, color="#475569", weight=ft.FontWeight.W_500),
-                            ft.Icon(icon, size=16, color="#475569")
-                        ]
-                    ),
-                    value_widget
-                ]
-            )
-        )
-
-    dashboard_row = ft.Row(
-        spacing=8,
-        controls=[
-            kpi_card("إجمالي المخزن", stat_total_stock, ft.Icons.INVENTORY_2, "#EFF6FF"),
-            kpi_card("مبيعات اليوم", stat_today_sales, ft.Icons.SHOPPING_BAG, "#EEF2FF"),
-            kpi_card("أرباح اليوم", stat_today_profit, ft.Icons.ATTACH_MONEY, "#F0FDF4"),
-        ]
-    )
-
-    search_input = ft.TextField(
-        hint_text="ابحث عن موديل، لون، مقاس...",
-        prefix_icon=ft.Icons.SEARCH,
-        border_radius=12,
-        bgcolor="#FFFFFF",
-        dense=True,
-        on_change=lambda e: filter_stock(e.control.value)
-    )
-
-    page.add(
-        status_banner,
-        dashboard_row,
-        ft.Container(height=4),
-        ft.ElevatedButton(
-            "📋 فتح صندوق اللصق الذكي (Smart Paste)",
-            icon=ft.Icons.PASTE,
-            bgcolor="#4F46E5",
-            color="#FFFFFF",
-            style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=10)),
-            on_click=lambda e: toggle_smart_paste()
-        ),
-        smart_paste_panel,
-        sale_panel,
-        ft.Container(height=4),
-        search_input,
-        ft.Container(height=4),
-        ft.Row(
-            alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-            controls=[
-                ft.Text("📦 قائمة المخزون", size=16, weight=ft.FontWeight.BOLD, color="#0F172A"),
-            ]
-        ),
-        stock_list_view
-    )
-
-    load_stock()
-
-ft.app(target=main)
-                    
+      
