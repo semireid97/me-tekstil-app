@@ -31,10 +31,10 @@ jobs:
         run: |
           yes | sdkmanager --licenses || true
 
-      - name: Setup Flutter SDK
+      - name: Setup Matched Flutter SDK
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.44.8'
+          flutter-version: '3.24.5'
           channel: 'stable'
           cache: true
 
@@ -54,7 +54,7 @@ jobs:
 
       - name: Build Android APK
         run: |
-          flet build apk --project "me_tekstil_erp" --org "com.metekstil.erp" --flutter-build-args="--android-skip-build-dependency-validation" --no-rich-output -v
+          flet build apk --project "me_tekstil_erp" --org "com.metekstil.erp" --no-rich-output -v
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
