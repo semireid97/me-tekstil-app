@@ -1,5 +1,6 @@
 import sqlite3
 import datetime
+import re
 import flet as ft
 
 # --- تهيئة قاعدة البيانات ---
@@ -41,7 +42,6 @@ def main(page: ft.Page):
     page.scroll = ft.ScrollMode.AUTO
     page.bgcolor = "#F8FAFC"
 
-    # عناصر لوحة المؤشرات
     stat_total_stock = ft.Text("0", size=18, weight=ft.FontWeight.BOLD, color="#1E3A8A")
     stat_today_sales = ft.Text("0", size=18, weight=ft.FontWeight.BOLD, color="#312E81")
     stat_today_profit = ft.Text("0.00 TL", size=18, weight=ft.FontWeight.BOLD, color="#14532D")
@@ -58,11 +58,9 @@ def main(page: ft.Page):
         on_change=lambda e: filter_stock(e.control.value)
     )
 
-    # --- تحديث المؤشرات العلوية ---
     def update_metrics():
         conn = sqlite3.connect("inventory.db")
         cursor = conn.cursor()
-        
         cursor.execute("SELECT SUM(quantity) FROM variants")
         tot_stock = cursor.fetchone()[0] or 0
         stat_total_stock.value = f"{tot_stock} قطعة"
@@ -73,15 +71,12 @@ def main(page: ft.Page):
             FROM sales WHERE sale_date >= ?
         """, (today_str,))
         s_row = cursor.fetchone()
-        
         t_qty = s_row[0] or 0
         t_profit = s_row[1] or 0.0
         stat_today_sales.value = f"{t_qty} قطعة"
         stat_today_profit.value = f"+{t_profit:.2f} TL"
-
         conn.close()
 
-    # --- تحميل وعرض المخزون ---
     def load_stock():
         nonlocal all_stock_data
         conn = sqlite3.connect("inventory.db")
@@ -173,6 +168,100 @@ def main(page: ft.Page):
             ]
             render_stock(filtered)
 
+    # --- نافذة اللصق الذكي (Smart Paste) ---
+    def open_smart_paste_dialog(e):
+        paste_input = ft.TextField(
+            label="الصق النص أو الجدول هنا",
+            multiline=True,
+            min_lines=6,
+            max_lines=10,
+            hint_text="مثال:\nZara Krep Pantolon\nالتكلفة: 140\nالمقاسات: 34, 36, 38, 40, 42, 44\nsiyah: 7, 7, 14, 14, 7, 7\nlaci: 1, 1, 2, 2, 1, 1\nbordo: 5, 5, 10, 10, 5, 5",
+            border_radius=8
+        )
+
+        def process_paste_text(ev):
+            raw = paste_input.value.strip()
+            if not raw:
+                return
+
+            lines = [l.strip() for l in raw.split("\n") if l.strip()]
+            model_name = "zara krep pantolon"
+            cost_price = 140.0
+            sizes = ["34", "36", "38", "40", "42", "44"]
+            parsed_items = []
+
+            for line in lines:
+                l_low = line.lower()
+                if "تكلفة" in l_low or "maliyet" in l_low or "cost" in l_low or "fiyat" in l_low:
+                    m = re.search(r'(\d+(?:[.,]\d+)?)', l_low)
+                    if m:
+                        cost_price = float(m.group(1).replace(",", "."))
+                elif "مقاس" in l_low or "beden" in l_low or "size" in l_low:
+                    parts = re.split(r'[:=]', line, 1)
+                    if len(parts) > 1:
+                        sizes = [s.strip().upper() for s in re.split(r'[, \t]+', parts[1]) if s.strip()]
+                elif ":" in line:
+                    c_name, q_str = line.split(":", 1)
+                    c_name = c_name.strip().lower()
+                    raw_nums = re.findall(r'\d+', q_str)
+                    if raw_nums:
+                        quantities = [int(n) for n in raw_nums]
+                        for i, q in enumerate(quantities):
+                            s = sizes[i] if i < len(sizes) else str(34 + (i * 2))
+                            parsed_items.append((model_name, c_name, s, q, cost_price))
+                elif len(line.split()) >= 2 and not any(k in l_low for k in ["stok", "adet", "tl", "toplam"]):
+                    model_name = line.strip().lower()
+
+            if not parsed_items:
+                page.snack_bar = ft.SnackBar(ft.Text("⚠️ تعذر استخراج البيانات، تأكد من التنسيق."), bgcolor="#DC2626")
+                page.snack_bar.open = True
+                page.update()
+                return
+
+            conn = sqlite3.connect("inventory.db")
+            cursor = conn.cursor()
+            total_added = 0
+            for item in parsed_items:
+                total_added += item[3]
+                cursor.execute("""
+                    INSERT INTO variants (product_name, color, size, quantity, cost_price)
+                    VALUES (?, ?, ?, ?, ?)
+                    ON CONFLICT(product_name, color, size) DO UPDATE SET
+                    quantity = quantity + excluded.quantity,
+                    cost_price = excluded.cost_price
+                """, item)
+            conn.commit()
+            conn.close()
+
+            smart_dialog.open = False
+            page.snack_bar = ft.SnackBar(ft.Text(f"✅ تم استيراد {total_added} قطعة وتوزيعها بنجاح!"), bgcolor="#16A34A")
+            page.snack_bar.open = True
+            load_stock()
+
+        def close_dialog(ev):
+            smart_dialog.open = False
+            page.update()
+
+        smart_dialog = ft.AlertDialog(
+            title=ft.Text("📋 لصق نص ذكي واستيراد سريع"),
+            content=ft.Column(
+                tight=True,
+                spacing=8,
+                controls=[
+                    ft.Text("انسخ جدول الإكسل أو رسالة التوزيع والصقها هنا:", size=13, color="#64748B"),
+                    paste_input
+                ]
+            ),
+            actions=[
+                ft.TextButton("إلغاء", on_click=close_dialog),
+                ft.ElevatedButton("معالجة وحفظ في المخزن", on_click=process_paste_text, bgcolor="#4F46E5", color="#FFFFFF")
+            ]
+        )
+
+        page.dialog = smart_dialog
+        smart_dialog.open = True
+        page.update()
+
     # --- نافذة تسجيل البيع ---
     def open_sale_dialog(variant_id, name, color, size, max_qty, cost_price):
         qty_input = ft.TextField(label="الكمية المباعة", value="1", keyboard_type=ft.KeyboardType.NUMBER, border_radius=8)
@@ -248,80 +337,6 @@ def main(page: ft.Page):
         dialog.open = True
         page.update()
 
-    # --- نافذة إضافة بضاعة جديدة ---
-    def open_add_dialog(e):
-        name_input = ft.TextField(label="اسم الموديل (Örn: Pantolon / Atlet)", border_radius=8)
-        color_input = ft.TextField(label="اللون (Örn: Siyah / Sarı / Pudra)", border_radius=8)
-        size_input = ft.TextField(label="المقاسات (Örn: S,M,L,XL أو 34,36,38)", border_radius=8)
-        qty_input = ft.TextField(label="الكمية لكل مقاس", value="10", keyboard_type=ft.KeyboardType.NUMBER, border_radius=8)
-        cost_input = ft.TextField(label="سعر التكلفة للقطعة (TL)", value="95", keyboard_type=ft.KeyboardType.NUMBER, border_radius=8)
-
-        def save_new_stock(ev):
-            p_name = name_input.value.strip().lower()
-            p_color = color_input.value.strip().lower()
-            raw_sizes = size_input.value.replace(".", ",").replace(" ", ",").split(",")
-            sizes = [s.strip().upper() for s in raw_sizes if s.strip()]
-
-            if not p_name or not p_color or not sizes:
-                page.snack_bar = ft.SnackBar(ft.Text("⚠️ يرجى ملء كافة الحقول!"), bgcolor="#DC2626")
-                page.snack_bar.open = True
-                page.update()
-                return
-
-            try:
-                qty = int(qty_input.value)
-                cost = float(cost_input.value)
-            except ValueError:
-                page.snack_bar = ft.SnackBar(ft.Text("⚠️ يرجى إدخال أرقام صحيحة!"), bgcolor="#DC2626")
-                page.snack_bar.open = True
-                page.update()
-                return
-
-            conn = sqlite3.connect("inventory.db")
-            cursor = conn.cursor()
-            for s in sizes:
-                cursor.execute("""
-                    INSERT INTO variants (product_name, color, size, quantity, cost_price)
-                    VALUES (?, ?, ?, ?, ?)
-                    ON CONFLICT(product_name, color, size) DO UPDATE SET
-                    quantity = quantity + excluded.quantity,
-                    cost_price = excluded.cost_price
-                """, (p_name, p_color, s, qty, cost))
-            conn.commit()
-            conn.close()
-
-            add_dialog.open = False
-            page.snack_bar = ft.SnackBar(ft.Text("✅ تم حفظ البضاعة بنجاح!"), bgcolor="#16A34A")
-            page.snack_bar.open = True
-            load_stock()
-
-        def close_add(ev):
-            add_dialog.open = False
-            page.update()
-
-        add_dialog = ft.AlertDialog(
-            title=ft.Text("➕ إضافة بضاعة جديدة للمخزن"),
-            content=ft.Column(
-                tight=True,
-                spacing=10,
-                controls=[
-                    name_input,
-                    color_input,
-                    size_input,
-                    qty_input,
-                    cost_input
-                ]
-            ),
-            actions=[
-                ft.TextButton("إلغاء", on_click=close_add),
-                ft.ElevatedButton("حفظ في المخزن", on_click=save_new_stock, bgcolor="#1D4ED8", color="#FFFFFF")
-            ]
-        )
-
-        page.dialog = add_dialog
-        add_dialog.open = True
-        page.update()
-
     # --- شريط التطبيق العلوي ---
     page.appbar = ft.AppBar(
         title=ft.Text("M&E Tekstil ERP", weight=ft.FontWeight.BOLD, color="#FFFFFF"),
@@ -332,7 +347,6 @@ def main(page: ft.Page):
         ]
     )
 
-    # تصميم بطاقات لوحة المؤشرات
     def kpi_card(title, value_widget, icon, bg_color):
         return ft.Container(
             expand=True,
@@ -363,17 +377,24 @@ def main(page: ft.Page):
         ]
     )
 
-    # الزر العائم لإضافة البضائع
-    page.floating_action_button = ft.FloatingActionButton(
-        icon=ft.Icons.ADD,
-        bgcolor="#1D4ED8",
-        content=ft.Icon(ft.Icons.ADD, color="#FFFFFF"),
-        on_click=open_add_dialog,
-        tooltip="إضافة بضاعة جديدة"
+    action_bar = ft.Row(
+        spacing=8,
+        controls=[
+            ft.ElevatedButton(
+                "📋 لصق نص ذكي",
+                icon=ft.Icons.PASTE,
+                bgcolor="#4F46E5",
+                color="#FFFFFF",
+                style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=10)),
+                on_click=open_smart_paste_dialog
+            ),
+        ]
     )
 
     page.add(
         dashboard_row,
+        ft.Container(height=4),
+        action_bar,
         ft.Container(height=4),
         search_input,
         ft.Container(height=4),
@@ -381,7 +402,6 @@ def main(page: ft.Page):
             alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
             controls=[
                 ft.Text("📦 قائمة المخزون", size=16, weight=ft.FontWeight.BOLD, color="#0F172A"),
-                ft.TextButton("➕ إضافة سريعة", on_click=open_add_dialog)
             ]
         ),
         stock_list_view
@@ -390,4 +410,4 @@ def main(page: ft.Page):
     load_stock()
 
 ft.app(target=main)
-                
+                    
