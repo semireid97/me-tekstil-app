@@ -49,14 +49,18 @@ def main(page: ft.Page):
     stock_list_view = ft.Column(spacing=8)
     all_stock_data = []
 
-    search_input = ft.TextField(
-        hint_text="ابحث عن موديل، لون، مقاس...",
-        prefix_icon=ft.Icons.SEARCH,
-        border_radius=12,
-        bgcolor="#FFFFFF",
-        dense=True,
-        on_change=lambda e: filter_stock(e.control.value)
-    )
+    # دالة إشعار سريعة ومتوافقة
+    def show_alert(msg, is_error=False):
+        sb = ft.SnackBar(
+            content=ft.Text(msg, color="#FFFFFF"),
+            bgcolor="#DC2626" if is_error else "#16A34A"
+        )
+        try:
+            page.open(sb)
+        except Exception:
+            page.snack_bar = sb
+            sb.open = True
+            page.update()
 
     def update_metrics():
         conn = sqlite3.connect("inventory.db")
@@ -168,16 +172,34 @@ def main(page: ft.Page):
             ]
             render_stock(filtered)
 
-    # --- نافذة اللصق الذكي (Smart Paste) ---
+    # --- نافذة اللصق الذكي (Smart Paste) المحدّثة ---
     def open_smart_paste_dialog(e):
+        sample_text = (
+            "Zara Krep Pantolon\n"
+            "Maliyet: 140\n"
+            "Beden: 34, 36, 38, 40, 42, 44\n"
+            "siyah: 7, 7, 14, 14, 7, 7\n"
+            "laci: 1, 1, 2, 2, 1, 1\n"
+            "bordo: 5, 5, 10, 10, 5, 5\n"
+            "vizon: 5, 5, 10, 10, 5, 5\n"
+            "beyaz: 3, 3, 6, 6, 3, 3\n"
+            "desenli: 1, 1, 2, 2, 1, 1"
+        )
         paste_input = ft.TextField(
-            label="الصق النص أو الجدول هنا",
+            label="الصق النص أو جدول الإكسل هنا",
             multiline=True,
             min_lines=6,
             max_lines=10,
-            hint_text="مثال:\nZara Krep Pantolon\nالتكلفة: 140\nالمقاسات: 34, 36, 38, 40, 42, 44\nsiyah: 7, 7, 14, 14, 7, 7\nlaci: 1, 1, 2, 2, 1, 1\nbordo: 5, 5, 10, 10, 5, 5",
+            value=sample_text,
             border_radius=8
         )
+
+        def close_dialog(ev):
+            try:
+                page.close(smart_dialog)
+            except Exception:
+                smart_dialog.open = False
+                page.update()
 
         def process_paste_text(ev):
             raw = paste_input.value.strip()
@@ -192,11 +214,11 @@ def main(page: ft.Page):
 
             for line in lines:
                 l_low = line.lower()
-                if "تكلفة" in l_low or "maliyet" in l_low or "cost" in l_low or "fiyat" in l_low:
+                if any(k in l_low for k in ["تكلفة", "maliyet", "cost", "fiyat"]):
                     m = re.search(r'(\d+(?:[.,]\d+)?)', l_low)
                     if m:
                         cost_price = float(m.group(1).replace(",", "."))
-                elif "مقاس" in l_low or "beden" in l_low or "size" in l_low:
+                elif any(k in l_low for k in ["مقاس", "beden", "size"]):
                     parts = re.split(r'[:=]', line, 1)
                     if len(parts) > 1:
                         sizes = [s.strip().upper() for s in re.split(r'[, \t]+', parts[1]) if s.strip()]
@@ -213,9 +235,7 @@ def main(page: ft.Page):
                     model_name = line.strip().lower()
 
             if not parsed_items:
-                page.snack_bar = ft.SnackBar(ft.Text("⚠️ تعذر استخراج البيانات، تأكد من التنسيق."), bgcolor="#DC2626")
-                page.snack_bar.open = True
-                page.update()
+                show_alert("⚠️ تعذر قراءة البيانات! تأكد من وجود اسم اللون ونقطتين : متبوعة بالأرقام", is_error=True)
                 return
 
             conn = sqlite3.connect("inventory.db")
@@ -233,22 +253,17 @@ def main(page: ft.Page):
             conn.commit()
             conn.close()
 
-            smart_dialog.open = False
-            page.snack_bar = ft.SnackBar(ft.Text(f"✅ تم استيراد {total_added} قطعة وتوزيعها بنجاح!"), bgcolor="#16A34A")
-            page.snack_bar.open = True
+            close_dialog(ev)
+            show_alert(f"✅ تم إضافة {total_added} قطعة في المخزن وتوزيعها بنجاح!")
             load_stock()
 
-        def close_dialog(ev):
-            smart_dialog.open = False
-            page.update()
-
         smart_dialog = ft.AlertDialog(
-            title=ft.Text("📋 لصق نص ذكي واستيراد سريع"),
+            title=ft.Text("📋 لصق نص ذكي وتوزيع سريع"),
             content=ft.Column(
                 tight=True,
                 spacing=8,
                 controls=[
-                    ft.Text("انسخ جدول الإكسل أو رسالة التوزيع والصقها هنا:", size=13, color="#64748B"),
+                    ft.Text("يمكنك تعديل الأرقام بالأسفل أو الضغط مباشرة على معالجة:", size=13, color="#64748B"),
                     paste_input
                 ]
             ),
@@ -258,9 +273,12 @@ def main(page: ft.Page):
             ]
         )
 
-        page.dialog = smart_dialog
-        smart_dialog.open = True
-        page.update()
+        try:
+            page.open(smart_dialog)
+        except Exception:
+            page.dialog = smart_dialog
+            smart_dialog.open = True
+            page.update()
 
     # --- نافذة تسجيل البيع ---
     def open_sale_dialog(variant_id, name, color, size, max_qty, cost_price):
@@ -277,21 +295,24 @@ def main(page: ft.Page):
             ]
         )
 
+        def close_sale(ev):
+            try:
+                page.close(dialog)
+            except Exception:
+                dialog.open = False
+                page.update()
+
         def confirm_sale(e):
             try:
                 sale_qty = int(qty_input.value)
                 sale_price = float(price_input.value)
                 channel = channel_dropdown.value
             except ValueError:
-                page.snack_bar = ft.SnackBar(ft.Text("⚠️ يرجى إدخال أرقام صحيحة!"), bgcolor="#DC2626")
-                page.snack_bar.open = True
-                page.update()
+                show_alert("⚠️ يرجى إدخال أرقام صحيحة!", is_error=True)
                 return
 
             if sale_qty <= 0 or sale_qty > max_qty:
-                page.snack_bar = ft.SnackBar(ft.Text(f"⚠️ الكمية غير صالحة! المتوفر: {max_qty}"), bgcolor="#DC2626")
-                page.snack_bar.open = True
-                page.update()
+                show_alert(f"⚠️ الكمية غير صالحة! المتوفر: {max_qty}", is_error=True)
                 return
 
             deductions = (sale_price * sale_qty * 0.167) if channel == "Trendyol" else 0.0
@@ -306,14 +327,9 @@ def main(page: ft.Page):
             conn.commit()
             conn.close()
 
-            dialog.open = False
-            page.snack_bar = ft.SnackBar(ft.Text(f"✅ تم تسجيل بيع {sale_qty} قطعة بنجاح!"), bgcolor="#16A34A")
-            page.snack_bar.open = True
+            close_sale(e)
+            show_alert(f"✅ تم تسجيل بيع {sale_qty} قطعة بنجاح!")
             load_stock()
-
-        def close_dialog(e):
-            dialog.open = False
-            page.update()
 
         dialog = ft.AlertDialog(
             title=ft.Text(f"تسجيل بيع: {name.title()} ({color.title()})"),
@@ -328,14 +344,17 @@ def main(page: ft.Page):
                 ]
             ),
             actions=[
-                ft.TextButton("إلغاء", on_click=close_dialog),
+                ft.TextButton("إلغاء", on_click=close_sale),
                 ft.ElevatedButton("تأكيد وخصم", on_click=confirm_sale, bgcolor="#16A34A", color="#FFFFFF")
             ]
         )
 
-        page.dialog = dialog
-        dialog.open = True
-        page.update()
+        try:
+            page.open(dialog)
+        except Exception:
+            page.dialog = dialog
+            dialog.open = True
+            page.update()
 
     # --- شريط التطبيق العلوي ---
     page.appbar = ft.AppBar(
@@ -377,6 +396,15 @@ def main(page: ft.Page):
         ]
     )
 
+    search_input = ft.TextField(
+        hint_text="ابحث عن موديل، لون، مقاس...",
+        prefix_icon=ft.Icons.SEARCH,
+        border_radius=12,
+        bgcolor="#FFFFFF",
+        dense=True,
+        on_change=lambda e: filter_stock(e.control.value)
+    )
+
     action_bar = ft.Row(
         spacing=8,
         controls=[
@@ -410,4 +438,4 @@ def main(page: ft.Page):
     load_stock()
 
 ft.app(target=main)
-                    
+                                 
